@@ -298,7 +298,6 @@ function renderTincanFooter(width: number, ctx: ExtensionContext, footerData: an
 			width,
 			theme,
 		),
-		"",
 		...panel(
 			"Context Window",
 			[
@@ -313,7 +312,6 @@ function renderTincanFooter(width: number, ctx: ExtensionContext, footerData: an
 			width,
 			theme,
 		),
-		"",
 		...panel(
 			"Activity",
 			[
@@ -329,14 +327,12 @@ function renderTincanFooter(width: number, ctx: ExtensionContext, footerData: an
 			width,
 			theme,
 		),
-		"",
 		...panel(
 			"Ask User Question",
 			[["Stats", `${badge("ASK", status.ask.calls > 0, theme)} calls:${status.ask.calls} · answers:${status.ask.answers} · cancelled:${status.ask.cancelled} · last:${status.ask.lastQuestions}`]],
 			width,
 			theme,
 		),
-		"",
 		...panel(
 			"Tincan Squad",
 			[
