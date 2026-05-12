@@ -274,19 +274,19 @@ function fmtTopAgents(byAgent: Record<string, number>, theme?: any): string {
 	);
 }
 
-function resourceLabel(label: string, color: string, theme?: any): string {
+function resourceLabel(label: string, slot: string, theme?: any): string {
 	if (!theme) return label;
-	return theme.fg(color, label);
+	return theme.fg(slot, label);
 }
 
 function renderResources(theme?: any): string {
 	const entry = (value: string) => (theme ? theme.fg("text", value) : value);
 	return joinFooterParts(
 		[
-			`${resourceLabel("tool", "accent", theme)}: ${[entry("ask_user_question"), entry("tincan_squad")].join(", ")}`,
-			`${resourceLabel("skill", "warning", theme)}: ${entry("tincan")}`,
-			`${resourceLabel("prompt", "muted", theme)}: ${entry("tincan")}`,
-			`${resourceLabel("footer", "success", theme)}: ${entry("active")}`,
+			`${resourceLabel("tool", "toolTitle", theme)}: ${[entry("ask_user_question"), entry("tincan_squad")].join(", ")}`,
+			`${resourceLabel("skill", "mdHeading", theme)}: ${entry("tincan")}`,
+			`${resourceLabel("prompt", "mdLink", theme)}: ${entry("tincan")}`,
+			`${resourceLabel("footer", "customMessageLabel", theme)}: ${entry("active")}`,
 		],
 		theme,
 	);
@@ -309,10 +309,28 @@ function panelLine(label: string, value: string, width: number, theme?: any): st
 	return line + " ".repeat(pad) + border;
 }
 
+function panelTitle(title: string): string {
+	switch (title) {
+		case "Session":
+			return "◉ SESSION";
+		case "Context Window":
+			return "◌ CONTEXT WINDOW";
+		case "Activity":
+			return "⚡ ACTIVITY";
+		case "Ask User Question":
+			return "? ASK USER QUESTION";
+		case "Tincan Squad":
+			return "◈ TINCAN SQUAD";
+		default:
+			return title.toUpperCase();
+	}
+}
+
 function panel(title: string, rows: Array<[string, string]>, width: number, theme?: any): string[] {
 	const inner = Math.max(20, width - 2);
+	const displayTitle = panelTitle(title);
 	if (!theme) {
-		const top = fitWidth(`╭─ ${title} ${"─".repeat(Math.max(0, inner - title.length - 3))}╮`, width);
+		const top = fitWidth(`╭─ ${displayTitle} ${"─".repeat(Math.max(0, inner - displayTitle.length - 3))}╮`, width);
 		const lines = rows.map(([label, value]) => panelLine(label, value, width));
 		const bottom = fitWidth(`╰${"─".repeat(Math.max(0, inner))}╯`, width);
 		return [top, ...lines, bottom];
@@ -322,8 +340,8 @@ function panel(title: string, rows: Array<[string, string]>, width: number, them
 	const edgeR = theme.fg("dim", "╮");
 	const bottomL = theme.fg("dim", "╰");
 	const bottomR = theme.fg("dim", "╯");
-	const titleText = theme.fg("toolTitle", title);
-	const rawTop = `${edgeL}─ ${titleText} ${border.repeat(Math.max(0, inner - title.length - 3))}${edgeR}`;
+	const titleText = theme.fg("toolTitle", theme.bold(displayTitle));
+	const rawTop = `${edgeL}─ ${titleText} ${border.repeat(Math.max(0, inner - displayTitle.length - 3))}${edgeR}`;
 	const top = fitWidth(rawTop, width);
 	const lines = rows.map(([label, value]) => panelLine(label, value, width, theme));
 	const bottom = fitWidth(`${bottomL}${border.repeat(Math.max(0, inner))}${bottomR}`, width);

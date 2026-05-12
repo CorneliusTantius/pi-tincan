@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.0.4
+
+- vary footer resource label colors with more native theme slots
+- make section titles uppercase + bold
+- add section symbols for faster footer scanning
+
 ## v1.0.3
 
 - dim RTK global segment including counts
