@@ -1,5 +1,7 @@
+import { execSync } from "node:child_process";
 import { Type } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
 const MAX_QUESTIONS = 4;
 const MIN_OPTIONS = 2;
@@ -69,7 +71,15 @@ type TincanStatus = {
 	communication: boolean;
 	turns: number;
 	promptInjects: number;
-	rtk: { available: boolean; rewrites: number };
+	rtk: {
+		available: boolean;
+		rewrites: number;
+		commands: number;
+		saved: number;
+		pct: number;
+		baselineCommands: number;
+		baselineSaved: number;
+	};
 	ask: { calls: number; answers: number; cancelled: number; lastQuestions: number };
 	squad: {
 		active: boolean;
@@ -153,11 +163,29 @@ function fmtPct(value: number | null): string {
 	return value === null ? "n/a" : `${value}%`;
 }
 
-function makeBar(pct: number | null, width: number): string {
+function fetchRtk() {
+	try {
+		const out = execSync("rtk gain -p -f json 2>/dev/null", { encoding: "utf8", timeout: 1000 });
+		const parsed = JSON.parse(out);
+		return {
+			commands: parsed.summary?.total_commands ?? 0,
+			saved: parsed.summary?.total_saved ?? 0,
+			pct: parsed.summary?.avg_savings_pct ?? 0,
+		};
+	} catch {
+		return { commands: 0, saved: 0, pct: 0 };
+	}
+}
+
+function makeBar(pct: number | null, width: number, theme?: any): string {
 	if (pct === null) return "n/a";
 	const safe = Math.max(0, Math.min(100, pct));
 	const filled = Math.round((safe / 100) * width);
-	return "█".repeat(filled) + "░".repeat(Math.max(0, width - filled));
+	const raw = "█".repeat(filled) + "░".repeat(Math.max(0, width - filled));
+	if (!theme) return raw;
+	if (safe >= 80) return theme.fg("error", raw);
+	if (safe >= 60) return theme.fg("warning", raw);
+	return theme.fg("success", raw);
 }
 
 function getUsageStats(ctx: ExtensionContext) {
@@ -175,26 +203,47 @@ function getUsageStats(ctx: ExtensionContext) {
 }
 
 function fmtTopAgents(byAgent: Record<string, number>): string {
+	const entries = Object.entries(byAgent).sort((a, b) => b[1] - a[1]);
+	const total = entries.reduce((sum, [, count]) => sum + count, 0);
 	return (
-		Object.entries(byAgent)
-			.sort((a, b) => b[1] - a[1])
+		entries
 			.slice(0, 6)
-			.map(([name, count]) => `${name}:${count}`)
+			.map(([name, count]) => `${name}:${count}${total > 0 ? ` (${Math.round((count / total) * 100)}%)` : ""}`)
 			.join(" · ") || "none"
 	);
 }
 
-function panelLine(label: string, value: string, width: number): string {
-	const labelWidth = Math.min(14, Math.max(10, Math.floor(width * 0.22)));
-	const body = `│ ${label.padEnd(labelWidth)} ${clip(value, width - labelWidth - 5)}`;
-	return padRight(body, Math.max(0, width - 1)) + "│";
+function panelLine(label: string, value: string, width: number, theme?: any): string {
+	const labelWidth = Math.min(16, Math.max(10, Math.floor(width * 0.24)));
+	const plain = clip(value, width - labelWidth - 5);
+	const body = `│ ${label.padEnd(labelWidth)} ${plain}`;
+	if (!theme) return padRight(body, Math.max(0, width - 1)) + "│";
+	const border = theme.fg("dim", "│");
+	const labelText = theme.fg("accent", label.padEnd(labelWidth));
+	const valueCell = truncateToWidth(plain, Math.max(0, width - labelWidth - 5));
+	const line = `${border} ${labelText} ${valueCell}`;
+	const pad = Math.max(0, width - 1 - visibleWidth(line));
+	return line + " ".repeat(pad) + border;
 }
 
-function panel(title: string, rows: Array<[string, string]>, width: number): string[] {
+function panel(title: string, rows: Array<[string, string]>, width: number, theme?: any): string[] {
 	const inner = Math.max(20, width - 2);
-	const top = padRight(`╭─ ${title} ${"─".repeat(Math.max(0, inner - title.length - 3))}╮`, width);
-	const lines = rows.map(([label, value]) => panelLine(label, value, width));
-	const bottom = padRight(`╰${"─".repeat(Math.max(0, inner))}╯`, width);
+	if (!theme) {
+		const top = padRight(`╭─ ${title} ${"─".repeat(Math.max(0, inner - title.length - 3))}╮`, width);
+		const lines = rows.map(([label, value]) => panelLine(label, value, width));
+		const bottom = padRight(`╰${"─".repeat(Math.max(0, inner))}╯`, width);
+		return [top, ...lines, bottom];
+	}
+	const border = theme.fg("dim", "─");
+	const edgeL = theme.fg("dim", "╭");
+	const edgeR = theme.fg("dim", "╮");
+	const bottomL = theme.fg("dim", "╰");
+	const bottomR = theme.fg("dim", "╯");
+	const titleText = theme.fg("toolTitle", title);
+	const rawTop = `${edgeL}─ ${titleText} ${border.repeat(Math.max(0, inner - title.length - 3))}${edgeR}`;
+	const top = padRight(rawTop, width);
+	const lines = rows.map(([label, value]) => panelLine(label, value, width, theme));
+	const bottom = padRight(`${bottomL}${border.repeat(Math.max(0, inner))}${bottomR}`, width);
 	return [top, ...lines, bottom];
 }
 
@@ -204,7 +253,7 @@ function tincanStatus(): TincanStatus {
 		communication: true,
 		turns: 0,
 		promptInjects: 0,
-		rtk: { available: false, rewrites: 0 },
+		rtk: { available: false, rewrites: 0, commands: 0, saved: 0, pct: 0, baselineCommands: 0, baselineSaved: 0 },
 		ask: { calls: 0, answers: 0, cancelled: 0, lastQuestions: 0 },
 		squad: {
 			active: true,
@@ -218,7 +267,7 @@ function tincanStatus(): TincanStatus {
 	}) as TincanStatus;
 }
 
-function renderTincanFooter(width: number, ctx: ExtensionContext, footerData: any): string[] {
+function renderTincanFooter(width: number, ctx: ExtensionContext, footerData: any, theme?: any): string[] {
 	const status = tincanStatus();
 	const branch = footerData?.getGitBranch?.() || "no-git";
 	const model = (ctx as any).model?.id || "no-model";
@@ -231,6 +280,8 @@ function renderTincanFooter(width: number, ctx: ExtensionContext, footerData: an
 	const ctxPct = ctxWindow > 0 ? Math.round((ctxTokens / ctxWindow) * 100) : null;
 	const topAgents = fmtTopAgents(status.squad.byAgent);
 	const usage = getUsageStats(ctx);
+	const rtkSessionSaved = Math.max(0, status.rtk.saved - status.rtk.baselineSaved);
+	const rtkSessionCommands = Math.max(0, status.rtk.commands - status.rtk.baselineCommands);
 	const lines = [
 		...panel(
 			"Session",
@@ -242,6 +293,7 @@ function renderTincanFooter(width: number, ctx: ExtensionContext, footerData: an
 				["Resources", "tools: ask_user_question, tincan_squad · skill: tincan · prompt: tincan · footer: active"],
 			],
 			width,
+			theme,
 		),
 		"",
 		...panel(
@@ -249,11 +301,12 @@ function renderTincanFooter(width: number, ctx: ExtensionContext, footerData: an
 			[
 				["Used", ctxWindow > 0 ? `${fmtNum(ctxTokens)} / ${fmtNum(ctxWindow)} (${fmtPct(ctxPct)})` : "n/a"],
 				["Remaining", ctxWindow > 0 ? fmtNum(Math.max(0, ctxWindow - ctxTokens)) : "n/a"],
-				["Bar", makeBar(ctxPct, Math.min(28, Math.max(10, Math.floor(width * 0.28))))],
+				["Bar", makeBar(ctxPct, Math.min(28, Math.max(10, Math.floor(width * 0.28))), theme)],
 				["Tokens", `${fmtNum(usage.input)} in · ${fmtNum(usage.output)} out · ${fmtNum(usage.total)} total`],
 				["Cost", `$${usage.cost.toFixed(4)}`],
 			],
 			width,
+			theme,
 		),
 		"",
 		...panel(
@@ -262,10 +315,13 @@ function renderTincanFooter(width: number, ctx: ExtensionContext, footerData: an
 				["Communication", status.communication ? "active every turn" : "off"],
 				["Persona", status.persona ? "orchestrator + senior SWE" : "off"],
 				["RTK Rewrite", `${status.rtk.available ? "on" : "off"} · ${status.rtk.rewrites} rewrites`],
+				["RTK Session", `${fmtNum(rtkSessionSaved)} saved over ${fmtNum(rtkSessionCommands)} cmds`],
+				["RTK Lifetime", `${fmtNum(status.rtk.saved)} saved · ${fmtNum(status.rtk.commands)} cmds · ${status.rtk.pct.toFixed(1)}% avg`],
 				["Prompt Inject", `${status.promptInjects}`],
 				["Turns", `${status.turns}`],
 			],
 			width,
+			theme,
 		),
 		"",
 		...panel(
@@ -277,6 +333,7 @@ function renderTincanFooter(width: number, ctx: ExtensionContext, footerData: an
 				["Last Questions", `${status.ask.lastQuestions}`],
 			],
 			width,
+			theme,
 		),
 		"",
 		...panel(
@@ -291,9 +348,10 @@ function renderTincanFooter(width: number, ctx: ExtensionContext, footerData: an
 				["Top Agents", topAgents],
 			],
 			width,
+			theme,
 		),
 	];
-	return lines.map((line) => line.slice(0, width));
+	return lines.map((line) => truncateToWidth(line, width));
 }
 
 export default async function piTincan(pi: ExtensionAPI) {
@@ -307,6 +365,14 @@ export default async function piTincan(pi: ExtensionAPI) {
 		rtkAvailable = false;
 	}
 	status.rtk.available = rtkAvailable;
+	if (rtkAvailable) {
+		const rtk = fetchRtk();
+		status.rtk.commands = rtk.commands;
+		status.rtk.saved = rtk.saved;
+		status.rtk.pct = rtk.pct;
+		status.rtk.baselineCommands = rtk.commands;
+		status.rtk.baselineSaved = rtk.saved;
+	}
 
 	if (!rtkAvailable) {
 		console.warn("[pi-tincan] rtk not found. Install rtk to enable bash command rewrites.");
@@ -435,9 +501,17 @@ export default async function piTincan(pi: ExtensionAPI) {
 
 	pi.on("session_start", (_event, ctx) => {
 		if (!ctx.hasUI) return;
-		ctx.ui.setFooter((tui: any, _theme: any, footerData: any) => {
+		ctx.ui.setFooter((tui: any, theme: any, footerData: any) => {
 			const unsubscribe = footerData?.onBranchChange?.(() => tui.requestRender?.());
-			const timer = setInterval(() => tui.requestRender?.(), 1500);
+			const timer = setInterval(() => {
+				if (status.rtk.available) {
+					const rtk = fetchRtk();
+					status.rtk.commands = rtk.commands;
+					status.rtk.saved = rtk.saved;
+					status.rtk.pct = rtk.pct;
+				}
+				tui.requestRender?.();
+			}, 1500);
 			return {
 				dispose() {
 					unsubscribe?.();
@@ -445,7 +519,7 @@ export default async function piTincan(pi: ExtensionAPI) {
 				},
 				invalidate() {},
 				render(width: number) {
-					return renderTincanFooter(width, ctx, footerData);
+					return renderTincanFooter(width, ctx, footerData, theme);
 				},
 			};
 		});

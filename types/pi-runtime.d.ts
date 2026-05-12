@@ -12,6 +12,11 @@ declare module "@earendil-works/pi-ai" {
 	};
 }
 
+declare module "@earendil-works/pi-tui" {
+	export function truncateToWidth(text: string, width: number): string;
+	export function visibleWidth(text: string): number;
+}
+
 declare module "@earendil-works/pi-coding-agent" {
 	export interface ExtensionUI {
 		notify(message: string, level?: "info" | "success" | "warning" | "error"): void;
