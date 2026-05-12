@@ -151,10 +151,6 @@ function padRight(text: string, width: number): string {
 	return text.length >= width ? text.slice(0, width) : text + " ".repeat(width - text.length);
 }
 
-function clip(text: string, width: number): string {
-	return width <= 0 ? "" : text.length > width ? text.slice(0, width) : text;
-}
-
 function fmtNum(value: number): string {
 	return value.toLocaleString("en-US");
 }
@@ -213,14 +209,18 @@ function fmtTopAgents(byAgent: Record<string, number>): string {
 	);
 }
 
+function badge(text: string, on: boolean, theme?: any): string {
+	if (!theme) return `[${text}]`;
+	return on ? theme.fg("success", `[${text}]`) : theme.fg("error", `[${text}]`);
+}
+
 function panelLine(label: string, value: string, width: number, theme?: any): string {
 	const labelWidth = Math.min(16, Math.max(10, Math.floor(width * 0.24)));
-	const plain = clip(value, width - labelWidth - 5);
-	const body = `│ ${label.padEnd(labelWidth)} ${plain}`;
+	const body = `│ ${label.padEnd(labelWidth)} ${value}`;
 	if (!theme) return padRight(body, Math.max(0, width - 1)) + "│";
 	const border = theme.fg("dim", "│");
 	const labelText = theme.fg("accent", label.padEnd(labelWidth));
-	const valueCell = truncateToWidth(plain, Math.max(0, width - labelWidth - 5));
+	const valueCell = truncateToWidth(value, Math.max(0, width - labelWidth - 5));
 	const line = `${border} ${labelText} ${valueCell}`;
 	const pad = Math.max(0, width - 1 - visibleWidth(line));
 	return line + " ".repeat(pad) + border;
@@ -286,7 +286,7 @@ function renderTincanFooter(width: number, ctx: ExtensionContext, footerData: an
 		...panel(
 			"Session",
 			[
-				["Package", "pi-tincan"],
+				["Package", `pi-tincan ${badge("COMM", status.communication, theme)} ${badge("PERSONA", status.persona, theme)} ${badge("SQUAD", status.squad.active, theme)} ${badge("RTK", status.rtk.available, theme)}`],
 				["Model", model],
 				["Branch", branch],
 				["CWD", cwd],
@@ -299,11 +299,13 @@ function renderTincanFooter(width: number, ctx: ExtensionContext, footerData: an
 		...panel(
 			"Context Window",
 			[
-				["Used", ctxWindow > 0 ? `${fmtNum(ctxTokens)} / ${fmtNum(ctxWindow)} (${fmtPct(ctxPct)})` : "n/a"],
-				["Remaining", ctxWindow > 0 ? fmtNum(Math.max(0, ctxWindow - ctxTokens)) : "n/a"],
-				["Bar", makeBar(ctxPct, Math.min(28, Math.max(10, Math.floor(width * 0.28))), theme)],
-				["Tokens", `${fmtNum(usage.input)} in · ${fmtNum(usage.output)} out · ${fmtNum(usage.total)} total`],
-				["Cost", `$${usage.cost.toFixed(4)}`],
+				[
+					"Usage",
+					ctxWindow > 0
+						? `${fmtNum(ctxTokens)} / ${fmtNum(ctxWindow)} (${fmtPct(ctxPct)})  ${makeBar(ctxPct, Math.min(28, Math.max(10, Math.floor(width * 0.28))), theme)}`
+						: "n/a",
+				],
+				["Tokens", `${fmtNum(usage.input)} in · ${fmtNum(usage.output)} out · ${fmtNum(usage.total)} total · $${usage.cost.toFixed(4)}`],
 			],
 			width,
 			theme,
@@ -312,13 +314,14 @@ function renderTincanFooter(width: number, ctx: ExtensionContext, footerData: an
 		...panel(
 			"Activity",
 			[
-				["Communication", status.communication ? "active every turn" : "off"],
-				["Persona", status.persona ? "orchestrator + senior SWE" : "off"],
-				["RTK Rewrite", `${status.rtk.available ? "on" : "off"} · ${status.rtk.rewrites} rewrites`],
-				["RTK Session", `${fmtNum(rtkSessionSaved)} saved over ${fmtNum(rtkSessionCommands)} cmds`],
-				["RTK Lifetime", `${fmtNum(status.rtk.saved)} saved · ${fmtNum(status.rtk.commands)} cmds · ${status.rtk.pct.toFixed(1)}% avg`],
-				["Prompt Inject", `${status.promptInjects}`],
-				["Turns", `${status.turns}`],
+				[
+					"Runtime",
+					`${badge("COMM", status.communication, theme)} ${badge("PERSONA", status.persona, theme)} ${badge("RTK", status.rtk.available, theme)}  prompt:${status.promptInjects} · turns:${status.turns}`,
+				],
+				[
+					"RTK",
+					`rewrite:${status.rtk.rewrites} · session:${fmtNum(rtkSessionSaved)} saved / ${fmtNum(rtkSessionCommands)} cmds · life:${fmtNum(status.rtk.saved)} / ${fmtNum(status.rtk.commands)} · ${status.rtk.pct.toFixed(1)}% avg`,
+				],
 			],
 			width,
 			theme,
@@ -326,12 +329,7 @@ function renderTincanFooter(width: number, ctx: ExtensionContext, footerData: an
 		"",
 		...panel(
 			"Ask User Question",
-			[
-				["Calls", `${status.ask.calls}`],
-				["Answers", `${status.ask.answers}`],
-				["Cancelled", `${status.ask.cancelled}`],
-				["Last Questions", `${status.ask.lastQuestions}`],
-			],
+			[["Stats", `${badge("ASK", status.ask.calls > 0, theme)} calls:${status.ask.calls} · answers:${status.ask.answers} · cancelled:${status.ask.cancelled} · last:${status.ask.lastQuestions}`]],
 			width,
 			theme,
 		),
@@ -339,13 +337,12 @@ function renderTincanFooter(width: number, ctx: ExtensionContext, footerData: an
 		...panel(
 			"Tincan Squad",
 			[
-				["Active", status.squad.active ? "yes" : "no"],
-				["Fires", `${status.squad.toolCalls}`],
-				["Agent Runs", `${status.squad.agentRuns}`],
-				["Running Now", `${status.squad.running}`],
-				["Last Mode", status.squad.lastMode],
-				["Last Agents", status.squad.lastAgents.join(", ") || "none"],
-				["Top Agents", topAgents],
+				[
+					"Runtime",
+					`${badge("SQUAD", status.squad.active, theme)} fires:${status.squad.toolCalls} · runs:${status.squad.agentRuns} · live:${status.squad.running} · mode:${status.squad.lastMode}`,
+				],
+				["Last", status.squad.lastAgents.join(", ") || "none"],
+				["Top", topAgents],
 			],
 			width,
 			theme,
