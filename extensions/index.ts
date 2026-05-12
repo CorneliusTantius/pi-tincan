@@ -147,8 +147,11 @@ function summarize(answers: Answer[]): string {
 	return answers.map((a) => `"${a.question}"="${selectedText(a)}"`).join(". ");
 }
 
-function padRight(text: string, width: number): string {
-	return text.length >= width ? text.slice(0, width) : text + " ".repeat(width - text.length);
+function fitWidth(text: string, width: number): string {
+	const current = visibleWidth(text);
+	if (current === width) return text;
+	if (current > width) return truncateToWidth(text, width);
+	return text + " ".repeat(width - current);
 }
 
 function fmtNum(value: number): string {
@@ -217,7 +220,7 @@ function badge(text: string, on: boolean, theme?: any): string {
 function panelLine(label: string, value: string, width: number, theme?: any): string {
 	const labelWidth = Math.min(16, Math.max(10, Math.floor(width * 0.24)));
 	const body = `│ ${label.padEnd(labelWidth)} ${value}`;
-	if (!theme) return padRight(body, Math.max(0, width - 1)) + "│";
+	if (!theme) return fitWidth(body, Math.max(0, width - 1)) + "│";
 	const border = theme.fg("dim", "│");
 	const labelText = theme.fg("accent", label.padEnd(labelWidth));
 	const valueCell = truncateToWidth(value, Math.max(0, width - labelWidth - 5));
@@ -229,9 +232,9 @@ function panelLine(label: string, value: string, width: number, theme?: any): st
 function panel(title: string, rows: Array<[string, string]>, width: number, theme?: any): string[] {
 	const inner = Math.max(20, width - 2);
 	if (!theme) {
-		const top = padRight(`╭─ ${title} ${"─".repeat(Math.max(0, inner - title.length - 3))}╮`, width);
+		const top = fitWidth(`╭─ ${title} ${"─".repeat(Math.max(0, inner - title.length - 3))}╮`, width);
 		const lines = rows.map(([label, value]) => panelLine(label, value, width));
-		const bottom = padRight(`╰${"─".repeat(Math.max(0, inner))}╯`, width);
+		const bottom = fitWidth(`╰${"─".repeat(Math.max(0, inner))}╯`, width);
 		return [top, ...lines, bottom];
 	}
 	const border = theme.fg("dim", "─");
@@ -241,9 +244,9 @@ function panel(title: string, rows: Array<[string, string]>, width: number, them
 	const bottomR = theme.fg("dim", "╯");
 	const titleText = theme.fg("toolTitle", title);
 	const rawTop = `${edgeL}─ ${titleText} ${border.repeat(Math.max(0, inner - title.length - 3))}${edgeR}`;
-	const top = padRight(rawTop, width);
+	const top = fitWidth(rawTop, width);
 	const lines = rows.map(([label, value]) => panelLine(label, value, width, theme));
-	const bottom = padRight(`${bottomL}${border.repeat(Math.max(0, inner))}${bottomR}`, width);
+	const bottom = fitWidth(`${bottomL}${border.repeat(Math.max(0, inner))}${bottomR}`, width);
 	return [top, ...lines, bottom];
 }
 
