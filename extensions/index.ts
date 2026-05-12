@@ -220,15 +220,15 @@ function renderRtkSummary(status: TincanStatus, rtkSessionSaved: number, rtkSess
 	const rewrites = colorRtkCount(status.rtk.rewrites, theme, { zeroColor: longSessionNoRewrites ? "error" : "dim" });
 	const sessionSaved = colorRtkCount(rtkSessionSaved, theme, { zeroColor: longSessionNoRewrites ? "error" : "dim" });
 	const sessionCmds = status.rtk.available ? theme?.fg?.("accent", fmtNum(rtkSessionCommands)) ?? fmtNum(rtkSessionCommands) : fmtNum(rtkSessionCommands);
-	const lifeSaved = colorRtkCount(status.rtk.saved, theme);
-	const lifeCmds = status.rtk.available ? theme?.fg?.("accent", fmtNum(status.rtk.commands)) ?? fmtNum(status.rtk.commands) : fmtNum(status.rtk.commands);
-	const avg = colorRtkValue(`${status.rtk.pct.toFixed(1)}% avg`, status.rtk.pct, theme);
+	const globalSaved = colorRtkCount(status.rtk.saved, theme);
+	const globalCmds = status.rtk.available ? theme?.fg?.("accent", fmtNum(status.rtk.commands)) ?? fmtNum(status.rtk.commands) : fmtNum(status.rtk.commands);
+	const sessionLabel = theme?.fg?.("accent", "[session]") ?? "[session]";
+	const globalLabel = theme?.fg?.("dim", "[global]") ?? "[global]";
 	return joinFooterParts(
 		[
-			`rewrite:${rewrites}`,
-			`session:${sessionSaved} saved / ${sessionCmds} cmds`,
-			`life:${lifeSaved} / ${lifeCmds}`,
-			avg,
+			`rewrite: ${rewrites}`,
+			`${sessionLabel} ${sessionSaved} saved / ${sessionCmds} cmds`,
+			`${globalLabel} ${globalSaved} saved / ${globalCmds} cmds`,
 			longSessionNoRewrites ? theme?.fg?.("error", "no rewrites yet") ?? "no rewrites yet" : "",
 		],
 		theme,
@@ -263,7 +263,7 @@ function fmtTopAgents(byAgent: Record<string, number>, theme?: any): string {
 	return (
 		entries
 			.slice(0, 6)
-			.map(([name, count]) => `${name}:${count}${total > 0 ? ` (${Math.round((count / total) * 100)}%)` : ""}`)
+			.map(([name, count]) => `${name}: ${count}${total > 0 ? ` (${Math.round((count / total) * 100)}%)` : ""}`)
 			.join(footerSep(theme)) || "none"
 	);
 }
@@ -276,11 +276,11 @@ function resourceLabel(label: string, color: string, theme?: any): string {
 function renderResources(theme?: any): string {
 	return joinFooterParts(
 		[
-			`${resourceLabel("tool", "accent", theme)}:${theme?.fg?.("success", "ask_user_question") ?? "ask_user_question"}`,
-			`${resourceLabel("tool", "accent", theme)}:${theme?.fg?.("success", "tincan_squad") ?? "tincan_squad"}`,
-			`${resourceLabel("skill", "warning", theme)}:${theme?.fg?.("accent", "tincan") ?? "tincan"}`,
-			`${resourceLabel("prompt", "muted", theme)}:${theme?.fg?.("toolTitle", "tincan") ?? "tincan"}`,
-			`${resourceLabel("footer", "success", theme)}:${theme?.fg?.("success", "active") ?? "active"}`,
+			`${resourceLabel("tool", "accent", theme)}: ${theme?.fg?.("success", "ask_user_question") ?? "ask_user_question"}`,
+			`${resourceLabel("tool", "accent", theme)}: ${theme?.fg?.("success", "tincan_squad") ?? "tincan_squad"}`,
+			`${resourceLabel("skill", "warning", theme)}: ${theme?.fg?.("accent", "tincan") ?? "tincan"}`,
+			`${resourceLabel("prompt", "muted", theme)}: ${theme?.fg?.("toolTitle", "tincan") ?? "tincan"}`,
+			`${resourceLabel("footer", "success", theme)}: ${theme?.fg?.("success", "active") ?? "active"}`,
 		],
 		theme,
 	);
@@ -381,7 +381,7 @@ function renderTincanFooter(width: number, ctx: ExtensionContext, footerData: an
 						? `${fmtNum(ctxTokens)} / ${fmtNum(ctxWindow)} (${fmtPct(ctxPct)})  ${makeBar(ctxPct, Math.min(28, Math.max(10, Math.floor(width * 0.28))), theme)}`
 						: "n/a",
 				],
-				["Tokens", joinFooterParts([`${fmtNum(usage.input)} in`, `${fmtNum(usage.output)} out`, `${fmtNum(usage.total)} total`, `$${usage.cost.toFixed(4)}`], theme)],
+				["Tokens", joinFooterParts([`in: ${fmtNum(usage.input)}`, `out: ${fmtNum(usage.output)}`, `total: ${fmtNum(usage.total)}`, `cost: $${usage.cost.toFixed(4)}`], theme)],
 			],
 			width,
 			theme,
@@ -391,7 +391,7 @@ function renderTincanFooter(width: number, ctx: ExtensionContext, footerData: an
 			[
 				[
 					"Runtime",
-					`${badge("COMM", status.communication, theme)} ${badge("PERSONA", status.persona, theme)} ${badge("RTK", status.rtk.available, theme)}  ${joinFooterParts([`prompt:${status.promptInjects}`, `turns:${status.turns}`], theme)}`,
+					`${badge("COMM", status.communication, theme)} ${badge("PERSONA", status.persona, theme)} ${badge("RTK", status.rtk.available, theme)}  ${joinFooterParts([`prompt: ${status.promptInjects}`, `turns: ${status.turns}`], theme)}`,
 				],
 				["RTK", renderRtkSummary(status, rtkSessionSaved, rtkSessionCommands, theme)],
 			],
@@ -400,7 +400,7 @@ function renderTincanFooter(width: number, ctx: ExtensionContext, footerData: an
 		),
 		...panel(
 			"Ask User Question",
-			[["Stats", `${badge("ASK", status.ask.calls > 0, theme)} ${joinFooterParts([`calls:${status.ask.calls}`, `answers:${status.ask.answers}`, `cancelled:${status.ask.cancelled}`, `last:${status.ask.lastQuestions}`], theme)}`]],
+			[["Stats", `${badge("ASK", status.ask.calls > 0, theme)} ${joinFooterParts([`calls: ${status.ask.calls}`, `answers: ${status.ask.answers}`, `cancelled: ${status.ask.cancelled}`, `last: ${status.ask.lastQuestions}`], theme)}`]],
 			width,
 			theme,
 		),
@@ -409,7 +409,7 @@ function renderTincanFooter(width: number, ctx: ExtensionContext, footerData: an
 			[
 				[
 					"Runtime",
-					`${badge("SQUAD", status.squad.active, theme)} ${joinFooterParts([`fires:${status.squad.toolCalls}`, `runs:${status.squad.agentRuns}`, `live:${status.squad.running}`, `mode:${status.squad.lastMode}`], theme)}`,
+					`${badge("SQUAD", status.squad.active, theme)} ${joinFooterParts([`fires: ${status.squad.toolCalls}`, `runs: ${status.squad.agentRuns}`, `live: ${status.squad.running}`, `mode: ${status.squad.lastMode}`], theme)}`,
 				],
 				["Last", status.squad.lastAgents.join(", ") || "none"],
 				["Top", topAgents],
