@@ -1,90 +1,72 @@
 # pi-tincan
 
-All-in-one, simple, barebone package for [pi coding agent](https://pi.dev/).
+Barebone all-in-one package for [pi](https://pi.dev/).
 
 Includes:
+- tools: `ask_user_question`, `tincan_squad`
+- always-on persona + communication injection
+- always-on footer
+- RTK bash rewrite hook via `rtk rewrite`
+- skill: `skills/tincan/SKILL.md`
+- prompt: `prompts/tincan.md`
 
-- Extension: `extensions/index.ts`
-- Tool: `ask_user_question`
-- Tool: `tincan_squad`
-- Always-on persona + communication injection via `before_agent_start`
-- Tincan Squad orchestration prompt for auto-delegation on complex tasks
-- Always-on custom Tincan footer
-- RTK bash rewrite hook via `rtk rewrite` when `rtk` exists in `PATH`
-- Install-RTK suggestion when `rtk` missing
-- Skill: `skills/tincan/SKILL.md`
-- Prompt: `prompts/tincan.md`
-
-`ask_user_question` is a barebone local clone of the Ungabunga Pi version:
+## ask_user_question
 
 - sequential questions only
-- built from `ctx.ui.select()` and `ctx.ui.input()`
-- supports single-select, multi-select, custom text, and "Chat about this"
-- accepts `preview` in the schema but does not render rich preview panes
+- built from `ctx.ui.select()` + `ctx.ui.input()`
+- single-select, multi-select, custom text, `Chat about this`
+- `preview` accepted in schema, no rich preview pane
 
-Persona adds:
+## tincan_squad
 
-- orchestrator + senior software engineer role
-- highly stable and scalable apps focus
-- careful, incremental, breaking-change aware, risk-averse, defensive, verifiable traits
-- architecture/refactor checklist with rollback and confirmation rules
-- always-on compact communication style: max meaning/min tokens, simple + important only
-- communication examples showing bad -> good output
-- optional RTK rewrite system for bash commands
+Focused subagents for complex work.
 
-## Tincan Squad
-
-`tincan_squad` delegates complex work to focused subagents. Simple tasks should stay with the orchestrator.
-
-Agents:
-
-| Agent | Role |
+| agent | role |
 |---|---|
-| `context-builder` | Analyze requirements/codebase, generate context + meta-prompt |
-| `delegate` | Lightweight general-purpose helper |
-| `explorer` | Try approaches/prototypes, report what works |
-| `planner` | Build implementation plans |
-| `researcher` | Web research + synthesis |
-| `reviewer` | Review diffs, plans, PRs, code health |
-| `scout` | Fast codebase reconnaissance |
-| `worker` | Implementation for approved bounded tasks |
+| `context-builder` | requirements/codebase context |
+| `delegate` | lightweight helper |
+| `explorer` | try approaches |
+| `planner` | implementation plan |
+| `researcher` | web research |
+| `reviewer` | review diffs/plans |
+| `scout` | repo reconnaissance |
+| `worker` | bounded implementation |
 
-Subagents can call `tincan_squad` if truly needed. Recursive delegation discouraged.
+## footer
 
-## Tincan Footer
+Shows:
+- persona/communication state
+- squad fires/runs/live count
+- top agent usage
+- ask-user-question stats
+- RTK status
+- model/branch/context usage
 
-Always-on footer. Tincan-only stats:
-
-- communication/persona active state
-- squad active state
-- squad fires
-- subagent runs + live count
-- top agents by usage
-- ask-user-question calls/answers/cancels
-- RTK availability + rewrite count
-- model + branch + context usage
-
-## Use locally
-
-From this directory:
+## use
 
 ```bash
 pi -e .
 ```
 
-Or install into the current project settings:
+Install project-local:
 
 ```bash
 pi install -l .
 ```
 
-Then reload pi:
+Reload:
 
 ```text
 /reload
 ```
 
-## Development
+Update git-installed package:
+
+```bash
+pi update git:github.com/CorneliusTantius/pi-tincan
+```
+
+## dev
 
 ```bash
 npm install
@@ -92,25 +74,8 @@ npm run typecheck
 npm run pack:dry
 ```
 
-## Structure
+## notes
 
-```text
-pi-tincan/
-├── extensions/
-│   └── index.ts
-├── skills/
-│   └── tincan/
-│       └── SKILL.md
-├── prompts/
-│   └── tincan.md
-├── package.json
-├── tsconfig.json
-└── types/
-    └── pi-runtime.d.ts
-```
-
-No slash commands are registered.
-
-## Notes
-
-Core pi packages are optional peer dependencies because pi provides them at runtime. `types/pi-runtime.d.ts` is a tiny fallback shim so this scaffold can typecheck without installing the full pi runtime locally.
+- no slash commands registered
+- pi core packages stay peer deps; pi provides them at runtime
+- `types/pi-runtime.d.ts` = fallback shim for local typecheck
