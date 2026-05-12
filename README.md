@@ -42,16 +42,10 @@ Shows:
 - RTK status
 - model/branch/context usage
 
-## use
+## install
 
 ```bash
-pi -e .
-```
-
-Install project-local:
-
-```bash
-pi install -l .
+pi install git:github.com/CorneliusTantius/pi-tincan
 ```
 
 Reload:
@@ -60,18 +54,10 @@ Reload:
 /reload
 ```
 
-Update git-installed package:
+Update:
 
 ```bash
 pi update git:github.com/CorneliusTantius/pi-tincan
-```
-
-## dev
-
-```bash
-npm install
-npm run typecheck
-npm run pack:dry
 ```
 
 ## notes
