@@ -46,14 +46,14 @@ Subagent nesting: allowed only when needed. Prefer direct work. No recursive del
 If delegating, use tincan_squad with precise task + expected output.`;
 
 const AGENT_MODELS: Record<string, string> = {
-	"context-builder": "gpt-5.4",
-	delegate: "gpt-5.4",
-	explorer: "Kimi-K2.6",
-	planner: "gpt-5.5",
-	researcher: "gpt-5.4",
-	reviewer: "gpt-5.5",
-	scout: "DeepSeek-V4-Flash",
-	worker: "gpt-5.3-Codex",
+	"context-builder": "azure-foundry-openai/gpt-5.4",
+	delegate: "azure-foundry-openai/gpt-5.4",
+	explorer: "azure-foundry-openai/Kimi-K2.6",
+	planner: "azure-foundry-responses/gpt-5.5",
+	researcher: "azure-foundry-openai/gpt-5.4",
+	reviewer: "azure-foundry-responses/gpt-5.5",
+	scout: "azure-foundry-openai/DeepSeek-V4-Flash",
+	worker: "azure-foundry-responses/gpt-5.3-Codex",
 };
 
 const AGENTS = {
@@ -299,7 +299,9 @@ export default function tincanSquad(pi: ExtensionAPI) {
 			const action = params.action ?? "run";
 			const timeoutMs = params.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
-			const fallbackModel = (ctx as any).model?.id as string | undefined;
+			const fallbackProvider = (ctx as any).model?.provider as string | undefined;
+			const fallbackId = (ctx as any).model?.id as string | undefined;
+			const fallbackModel = fallbackProvider && fallbackId ? `${fallbackProvider}/${fallbackId}` : fallbackId;
 
 			if (action === "list") {
 				const agents = agentNames.map((name) => ({ name, description: AGENTS[name].description, designatedModel: AGENT_MODELS[name] }));
