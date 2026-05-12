@@ -15,17 +15,9 @@ declare module "@earendil-works/pi-ai" {
 declare module "@earendil-works/pi-tui" {
 	export function truncateToWidth(text: string, width: number): string;
 	export function visibleWidth(text: string): number;
-	export class Text {
-		constructor(content: string, paddingX?: number, paddingY?: number, bgFn?: ((text: string) => string) | undefined);
-	}
-	export class Markdown {
-		constructor(content: string, paddingX?: number, paddingY?: number, theme?: unknown);
-	}
 }
 
 declare module "@earendil-works/pi-coding-agent" {
-	export function getMarkdownTheme(): unknown;
-
 	export interface ExtensionUI {
 		notify(message: string, level?: "info" | "success" | "warning" | "error"): void;
 		select(title: string, options: string[]): Promise<string | undefined>;

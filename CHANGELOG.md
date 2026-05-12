@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.1.0
+
+- remove custom pretty Markdown renderer from `tincan_squad` results
+- keep footer/versioning improvements
+
 ## v1.0.4
 
 - vary footer resource label colors with more native theme slots

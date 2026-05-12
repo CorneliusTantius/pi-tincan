@@ -4,8 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Type } from "@earendil-works/pi-ai";
-import { getMarkdownTheme, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { Markdown, Text } from "@earendil-works/pi-tui";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 type AgentName = keyof typeof AGENTS;
 type Task = { agent: AgentName; task: string };
@@ -171,70 +170,6 @@ function result(text: string, details: Record<string, unknown>) {
 	return { content: [{ type: "text" as const, text }], details };
 }
 
-function textContent(content: Array<{ type: "text"; text: string }> | undefined): string {
-	return content?.filter((part) => part.type === "text").map((part) => part.text).join("\n\n") ?? "";
-}
-
-function previewText(markdown: string, maxLines = 10): string {
-	const lines = markdown.trim().split("\n");
-	if (lines.length <= maxLines) return markdown.trim();
-	return `${lines.slice(0, maxLines).join("\n")}\n\n(Ctrl+O to expand)`;
-}
-
-function buildMarkdown(result: { content?: Array<{ type: "text"; text: string }>; details?: Record<string, unknown> }): string {
-	const details = result.details as
-		| {
-				agents?: Array<{ name: string; description: string; designatedModel?: string }>;
-				mode?: "single" | "parallel" | "chain";
-				result?: { agent?: string; output?: string; stderr?: string; timedOut?: boolean; modelUsed?: string; fallbackUsed?: boolean; fallbackModel?: string };
-				results?: Array<{
-					agent?: string;
-					output?: string;
-					stderr?: string;
-					timedOut?: boolean;
-					modelUsed?: string;
-					fallbackUsed?: boolean;
-					fallbackModel?: string;
-				}>;
-			}
-		| undefined;
-
-	if (details?.agents?.length) {
-		return [
-			"# Tincan Squad agents",
-			"",
-			...details.agents.map(
-				(agent) =>
-					`- **${agent.name}** — ${agent.description}${agent.designatedModel ? `  \`${agent.designatedModel}\`` : ""}`,
-			),
-		].join("\n");
-	}
-
-	const renderRun = (run: {
-		agent?: string;
-		output?: string;
-		stderr?: string;
-		timedOut?: boolean;
-		modelUsed?: string;
-		fallbackUsed?: boolean;
-		fallbackModel?: string;
-		}) => {
-		const body = (run.output || run.stderr || "No output").trim();
-		const meta = [run.modelUsed ? `model: \`${run.modelUsed}\`` : "", run.timedOut ? "status: **timed out**" : ""]
-			.filter(Boolean)
-			.join(" · ");
-		const fallback = run.fallbackUsed && run.fallbackModel ? `\n\n_Fallback model: \`${run.fallbackModel}\`_` : "";
-		return `## ${run.agent || "run"}${meta ? `\n\n${meta}` : ""}\n\n${body || "No output"}${fallback}`;
-	};
-
-	if (details?.mode === "single" && details.result) return renderRun(details.result);
-	if ((details?.mode === "parallel" || details?.mode === "chain") && details.results?.length) {
-		return details.results.map(renderRun).join("\n\n");
-	}
-
-	return textContent(result.content).trim() || "No output";
-}
-
 function finalText(stdout: string): string {
 	let last = "";
 	for (const line of stdout.split("\n")) {
@@ -352,17 +287,6 @@ export default function tincanSquad(pi: ExtensionAPI) {
 			"Subagents may call tincan_squad only when genuinely needed; avoid recursive delegation loops.",
 		],
 		parameters: ParamsSchema,
-		renderCall(args: any, theme: any) {
-			if (args.tasks?.length) return new Text(`${theme.fg("toolTitle", theme.bold("tincan_squad "))}${theme.fg("accent", `${args.tasks.length} parallel task(s)`)}`, 0, 0);
-			if (args.chain?.length) return new Text(`${theme.fg("toolTitle", theme.bold("tincan_squad "))}${theme.fg("accent", `${args.chain.length} chain step(s)`)}`, 0, 0);
-			if (args.action === "list") return new Text(`${theme.fg("toolTitle", theme.bold("tincan_squad "))}${theme.fg("muted", "list agents")}`, 0, 0);
-			return new Text(`${theme.fg("toolTitle", theme.bold("tincan_squad "))}${theme.fg("accent", args.agent || "...")}${args.task ? theme.fg("dim", ` ${args.task.slice(0, 60)}${args.task.length > 60 ? "..." : ""}`) : ""}`, 0, 0);
-		},
-		renderResult(result: any, { expanded }: { expanded: boolean }, theme: any) {
-			const markdown = buildMarkdown(result as { content?: Array<{ type: "text"; text: string }>; details?: Record<string, unknown> });
-			if (!expanded) return new Text(previewText(markdown), 0, 0);
-			return new Markdown(markdown, 0, 0, getMarkdownTheme());
-		},
 		async execute(_id: string, raw: unknown, signal: AbortSignal | undefined, _onUpdate: unknown, ctx: ExtensionContext) {
 			const params = raw as Params;
 			const action = params.action ?? "run";
