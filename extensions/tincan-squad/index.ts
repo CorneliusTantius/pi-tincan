@@ -21,9 +21,19 @@ type Params = {
 type TincanStatus = {
 	persona: boolean;
 	communication: boolean;
+	turns: number;
+	promptInjects: number;
 	rtk: { available: boolean; rewrites: number };
-	ask: { calls: number; answers: number; cancelled: number };
-	squad: { active: boolean; toolCalls: number; agentRuns: number; running: number; byAgent: Record<string, number> };
+	ask: { calls: number; answers: number; cancelled: number; lastQuestions: number };
+	squad: {
+		active: boolean;
+		toolCalls: number;
+		agentRuns: number;
+		running: number;
+		byAgent: Record<string, number>;
+		lastMode: "idle" | "single" | "parallel" | "chain";
+		lastAgents: string[];
+	};
 };
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -129,9 +139,19 @@ function tincanStatus(): TincanStatus {
 	return (((globalThis as any).__piTincan ??= {
 		persona: true,
 		communication: true,
+		turns: 0,
+		promptInjects: 0,
 		rtk: { available: false, rewrites: 0 },
-		ask: { calls: 0, answers: 0, cancelled: 0 },
-		squad: { active: true, toolCalls: 0, agentRuns: 0, running: 0, byAgent: {} as Record<string, number> },
+		ask: { calls: 0, answers: 0, cancelled: 0, lastQuestions: 0 },
+		squad: {
+			active: true,
+			toolCalls: 0,
+			agentRuns: 0,
+			running: 0,
+			byAgent: {} as Record<string, number>,
+			lastMode: "idle",
+			lastAgents: [],
+		},
 	}) as TincanStatus);
 }
 
@@ -232,6 +252,8 @@ export default function tincanSquad(pi: ExtensionAPI) {
 
 			if (params.tasks?.length) {
 				status.squad.toolCalls++;
+				status.squad.lastMode = "parallel";
+				status.squad.lastAgents = params.tasks.map((t) => t.agent);
 				const tasks = params.tasks.slice(0, MAX_PARALLEL);
 				const results = await Promise.all(tasks.map((t) => runOne(t.agent, t.task, timeoutMs, ctx.cwd, signal)));
 				return result(results.map((r) => `## ${r.agent}\n${r.output || r.stderr}`).join("\n\n"), { mode: "parallel", results });
@@ -239,6 +261,8 @@ export default function tincanSquad(pi: ExtensionAPI) {
 
 			if (params.chain?.length) {
 				status.squad.toolCalls++;
+				status.squad.lastMode = "chain";
+				status.squad.lastAgents = params.chain.map((t) => t.agent);
 				let previous = "";
 				const results = [];
 				for (const step of params.chain) {
@@ -256,6 +280,8 @@ export default function tincanSquad(pi: ExtensionAPI) {
 			}
 
 			status.squad.toolCalls++;
+			status.squad.lastMode = "single";
+			status.squad.lastAgents = [params.agent];
 			const r = await runOne(params.agent, params.task, timeoutMs, ctx.cwd, signal);
 			return result(r.output || r.stderr || "No output", { mode: "single", result: r });
 		},

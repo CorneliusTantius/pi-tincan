@@ -67,9 +67,19 @@ type Answer = {
 type TincanStatus = {
 	persona: boolean;
 	communication: boolean;
+	turns: number;
+	promptInjects: number;
 	rtk: { available: boolean; rewrites: number };
-	ask: { calls: number; answers: number; cancelled: number };
-	squad: { active: boolean; toolCalls: number; agentRuns: number; running: number; byAgent: Record<string, number> };
+	ask: { calls: number; answers: number; cancelled: number; lastQuestions: number };
+	squad: {
+		active: boolean;
+		toolCalls: number;
+		agentRuns: number;
+		running: number;
+		byAgent: Record<string, number>;
+		lastMode: "idle" | "single" | "parallel" | "chain";
+		lastAgents: string[];
+	};
 };
 
 const QuestionParamsSchema = Type.Object({
@@ -131,8 +141,26 @@ function padRight(text: string, width: number): string {
 	return text.length >= width ? text.slice(0, width) : text + " ".repeat(width - text.length);
 }
 
-function renderFooterLine(label: string, value: string, width: number): string {
-	const body = `│ ${label.padEnd(7)} ${value}`;
+function clip(text: string, width: number): string {
+	return width <= 0 ? "" : text.length > width ? text.slice(0, width) : text;
+}
+
+function fmtPct(value: number | null): string {
+	return value === null ? "n/a" : `${value}%`;
+}
+
+function fmtTopAgents(byAgent: Record<string, number>): string {
+	return (
+		Object.entries(byAgent)
+			.sort((a, b) => b[1] - a[1])
+			.slice(0, 6)
+			.map(([name, count]) => `${name}:${count}`)
+			.join(" | ") || "none"
+	);
+}
+
+function bar(label: string, value: string, width: number): string {
+	const body = `│ ${label} ${value}`;
 	return padRight(body, Math.max(0, width - 1)) + "│";
 }
 
@@ -140,43 +168,62 @@ function tincanStatus(): TincanStatus {
 	return ((globalThis as any).__piTincan ??= {
 		persona: true,
 		communication: true,
+		turns: 0,
+		promptInjects: 0,
 		rtk: { available: false, rewrites: 0 },
-		ask: { calls: 0, answers: 0, cancelled: 0 },
-		squad: { active: true, toolCalls: 0, agentRuns: 0, running: 0, byAgent: {} as Record<string, number> },
+		ask: { calls: 0, answers: 0, cancelled: 0, lastQuestions: 0 },
+		squad: {
+			active: true,
+			toolCalls: 0,
+			agentRuns: 0,
+			running: 0,
+			byAgent: {} as Record<string, number>,
+			lastMode: "idle",
+			lastAgents: [],
+		},
 	}) as TincanStatus;
 }
 
 function renderTincanFooter(width: number, ctx: ExtensionContext, footerData: any): string[] {
 	const status = tincanStatus();
-	const inner = Math.max(20, width - 2);
+	const inner = Math.max(28, width - 2);
 	const branch = footerData?.getGitBranch?.() || "no-git";
 	const model = (ctx as any).model?.id || "no-model";
 	const ctxUsage = (ctx as any).getContextUsage?.();
 	const ctxPct = ctxUsage?.contextWindow ? Math.round((ctxUsage.tokens / ctxUsage.contextWindow) * 100) : null;
-	const topAgents =
-		Object.entries(status.squad.byAgent)
-			.sort((a, b) => b[1] - a[1])
-			.slice(0, 4)
-			.map(([name, count]) => `${name}:${count}`)
-			.join(", ") || "none";
-
+	const topAgents = fmtTopAgents(status.squad.byAgent);
+	const modeLine = [
+		`COMM:${status.communication ? "ON" : "OFF"}`,
+		`PERSONA:${status.persona ? "ON" : "OFF"}`,
+		`SQUAD:${status.squad.active ? "ON" : "OFF"}`,
+		`RTK:${status.rtk.available ? "ON" : "OFF"}`,
+		`CTX:${fmtPct(ctxPct)}`,
+	].join("  ");
+	const flowLine = [
+		`TURNS:${status.turns}`,
+		`PROMPT:${status.promptInjects}`,
+		`ASK:${status.ask.calls}`,
+		`ANS:${status.ask.answers}`,
+		`CXL:${status.ask.cancelled}`,
+		`LAST_Q:${status.ask.lastQuestions}`,
+	].join("  ");
+	const squadLine = [
+		`FIRES:${status.squad.toolCalls}`,
+		`RUNS:${status.squad.agentRuns}`,
+		`LIVE:${status.squad.running}`,
+		`MODE:${status.squad.lastMode}`,
+		`LAST:${status.squad.lastAgents.join(",") || "none"}`,
+	].join("  ");
+	const envLine = `MODEL:${model}  BRANCH:${branch}  RTK_RW:${status.rtk.rewrites}`;
 	const lines = [
-		padRight(`╭─ tincan ${"─".repeat(Math.max(0, inner - 10))}`, width),
-		renderFooterLine(
-			"mode",
-			`comm:${status.communication ? "on" : "off"} persona:${status.persona ? "on" : "off"} squad:${status.squad.active ? "on" : "off"} rtk:${status.rtk.available ? "on" : "off"}`,
-			width,
-		),
-		renderFooterLine(
-			"usage",
-			`ask ${status.ask.calls} call / ${status.ask.answers} ans / ${status.ask.cancelled} cancel   squad ${status.squad.toolCalls} fire / ${status.squad.agentRuns} run / ${status.squad.running} live   rtk ${status.rtk.rewrites} rw`,
-			width,
-		),
-		renderFooterLine("agents", topAgents, width),
-		renderFooterLine("env", `model:${model} branch:${branch}${ctxPct !== null ? ` ctx:${ctxPct}%` : ""}`, width),
-		padRight(`╰${"─".repeat(Math.max(0, inner))}╯`, width),
+		padRight(`╔═ TINCAN ═${"═".repeat(Math.max(0, inner - 11))}╗`, width),
+		bar("▓ MODE  ", clip(modeLine, width - 11), width),
+		bar("▓ FLOW  ", clip(flowLine, width - 11), width),
+		bar("▓ SQUAD ", clip(squadLine, width - 11), width),
+		bar("▓ AGENT ", clip(topAgents, width - 11), width),
+		bar("▓ ENV   ", clip(envLine, width - 11), width),
+		padRight(`╚${"═".repeat(Math.max(0, inner))}╝`, width),
 	];
-
 	return lines.map((line) => line.slice(0, width));
 }
 
@@ -239,6 +286,7 @@ export default async function piTincan(pi: ExtensionAPI) {
 		) {
 			status.ask.calls++;
 			const params = rawParams as Params;
+			status.ask.lastQuestions = Array.isArray(params.questions) ? params.questions.length : 0;
 			if (!ctx.hasUI) {
 				status.ask.cancelled++;
 				return textResult("Error: UI not available", { answers: [], cancelled: true, error: "no_ui" });
@@ -335,6 +383,15 @@ export default async function piTincan(pi: ExtensionAPI) {
 	});
 
 	pi.on("before_agent_start", (event) => {
+		status.promptInjects++;
 		return { systemPrompt: `${event.systemPrompt}\n\n${TINCAN_PERSONA}` };
+	});
+
+	pi.on("session_shutdown", () => {
+		status.squad.running = 0;
+	});
+
+	pi.on("turn_end" as any, () => {
+		status.turns++;
 	});
 }
