@@ -48,7 +48,7 @@ If delegating, use tincan_squad with precise task + expected output.`;
 const AGENT_MODELS: Record<string, string> = {
 	"context-builder": "azure-foundry-openai/gpt-5.4",
 	delegate: "azure-foundry-openai/gpt-5.4",
-	explorer: "azure-foundry-openai/Kimi-K2.6",
+	explorer: "azure-foundry-openai/gpt-5.4",
 	planner: "azure-foundry-responses/gpt-5.5",
 	researcher: "azure-foundry-openai/gpt-5.4",
 	reviewer: "azure-foundry-responses/gpt-5.5",
