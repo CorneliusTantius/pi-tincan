@@ -45,6 +45,17 @@ const SHARED = `Communication: max meaning/min tokens. Simple + important only.
 Subagent nesting: allowed only when needed. Prefer direct work. No recursive delegation loops.
 If delegating, use tincan_squad with precise task + expected output.`;
 
+const AGENT_MODELS: Record<string, string> = {
+	"context-builder": "gpt-5.4",
+	delegate: "gpt-5.4",
+	explorer: "Kimi-K2.6",
+	planner: "gpt-5.5",
+	researcher: "gpt-5.4",
+	reviewer: "gpt-5.5",
+	scout: "DeepSeek-V4-Flash",
+	worker: "gpt-5.3-Codex",
+};
+
 const AGENTS = {
 	"context-builder": {
 		description: "Analyze requirements/codebase, generate context + meta-prompt",
@@ -176,49 +187,92 @@ function finalText(stdout: string): string {
 	return last.trim() || stdout.trim();
 }
 
-async function runOne(agentName: AgentName, task: string, timeoutMs: number, cwd: string, signal?: AbortSignal) {
+async function runProcess(
+	agentName: AgentName,
+	task: string,
+	timeoutMs: number,
+	cwd: string,
+	promptPath: string,
+	model: string | undefined,
+	signal?: AbortSignal,
+) {
+	const args = ["-e", PACKAGE_ROOT, "--mode", "json", "-p", "--no-session"];
+	if (model) args.push("--model", model);
+	args.push("--append-system-prompt", promptPath, task);
+	let stdout = "";
+	let stderr = "";
+	let timedOut = false;
+	const code = await new Promise<number>((resolve) => {
+		const proc = spawn("pi", args, { cwd, stdio: ["ignore", "pipe", "pipe"] });
+		const timer = setTimeout(() => {
+			timedOut = true;
+			proc.kill("SIGTERM");
+		}, timeoutMs);
+		proc.stdout.on("data", (d) => (stdout += d.toString()));
+		proc.stderr.on("data", (d) => (stderr += d.toString()));
+		proc.on("close", (c) => {
+			clearTimeout(timer);
+			resolve(c ?? 0);
+		});
+		proc.on("error", () => {
+			clearTimeout(timer);
+			resolve(1);
+		});
+		if (signal) {
+			const abort = () => proc.kill("SIGTERM");
+			if (signal.aborted) abort();
+			else signal.addEventListener("abort", abort, { once: true });
+		}
+	});
+	return { ok: code === 0 && !timedOut, agent: agentName, code, timedOut, output: finalText(stdout), stderr, modelUsed: model };
+}
+
+async function runOne(
+	agentName: AgentName,
+	task: string,
+	timeoutMs: number,
+	cwd: string,
+	fallbackModel?: string,
+	signal?: AbortSignal,
+) {
 	const status = tincanStatus();
 	const agent = AGENTS[agentName];
-	if (!agent) return { ok: false, agent: agentName, error: "unknown agent", output: "" };
+	if (!agent) {
+		return {
+			ok: false,
+			agent: agentName,
+			error: "unknown agent",
+			output: "",
+			stderr: "unknown agent",
+			code: 1,
+			timedOut: false,
+			modelUsed: undefined,
+			fallbackUsed: false,
+			fallbackModel,
+		};
+	}
 	status.squad.agentRuns++;
 	status.squad.running++;
 	status.squad.byAgent[agentName] = (status.squad.byAgent[agentName] || 0) + 1;
 
+	const designatedModel = AGENT_MODELS[agentName];
 	const dir = await mkdtemp(join(tmpdir(), "tincan-squad-"));
 	const promptPath = join(dir, `${agentName}.md`);
 	await writeFile(promptPath, agent.prompt, "utf8");
 
-	const args = ["-e", PACKAGE_ROOT, "--mode", "json", "-p", "--no-session", "--append-system-prompt", promptPath, task];
-	let stdout = "";
-	let stderr = "";
-	let timedOut = false;
-
 	try {
-		const code = await new Promise<number>((resolve) => {
-			const proc = spawn("pi", args, { cwd, stdio: ["ignore", "pipe", "pipe"] });
-			const timer = setTimeout(() => {
-				timedOut = true;
-				proc.kill("SIGTERM");
-			}, timeoutMs);
-
-			proc.stdout.on("data", (d) => (stdout += d.toString()));
-			proc.stderr.on("data", (d) => (stderr += d.toString()));
-			proc.on("close", (c) => {
-				clearTimeout(timer);
-				resolve(c ?? 0);
-			});
-			proc.on("error", () => {
-				clearTimeout(timer);
-				resolve(1);
-			});
-			if (signal) {
-				const abort = () => proc.kill("SIGTERM");
-				if (signal.aborted) abort();
-				else signal.addEventListener("abort", abort, { once: true });
-			}
-		});
-
-		return { ok: code === 0 && !timedOut, agent: agentName, code, timedOut, output: finalText(stdout), stderr };
+		const primary = await runProcess(agentName, task, timeoutMs, cwd, promptPath, designatedModel, signal);
+		if (primary.ok || !fallbackModel || fallbackModel === designatedModel) {
+			return { ...primary, fallbackUsed: false, fallbackModel };
+		}
+		const fallback = await runProcess(agentName, task, timeoutMs, cwd, promptPath, fallbackModel, signal);
+		return {
+			...(fallback.ok ? fallback : primary),
+			fallbackUsed: true,
+			fallbackModel,
+			primaryModel: designatedModel,
+			primaryError: primary.stderr || primary.output,
+		};
 	} finally {
 		status.squad.running = Math.max(0, status.squad.running - 1);
 		await rm(dir, { recursive: true, force: true });
@@ -245,8 +299,10 @@ export default function tincanSquad(pi: ExtensionAPI) {
 			const action = params.action ?? "run";
 			const timeoutMs = params.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
+			const fallbackModel = (ctx as any).model?.id as string | undefined;
+
 			if (action === "list") {
-				const agents = agentNames.map((name) => ({ name, description: AGENTS[name].description }));
+				const agents = agentNames.map((name) => ({ name, description: AGENTS[name].description, designatedModel: AGENT_MODELS[name] }));
 				return result(JSON.stringify({ agents }, null, 2), { agents });
 			}
 
@@ -255,7 +311,7 @@ export default function tincanSquad(pi: ExtensionAPI) {
 				status.squad.lastMode = "parallel";
 				status.squad.lastAgents = params.tasks.map((t) => t.agent);
 				const tasks = params.tasks.slice(0, MAX_PARALLEL);
-				const results = await Promise.all(tasks.map((t) => runOne(t.agent, t.task, timeoutMs, ctx.cwd, signal)));
+				const results = await Promise.all(tasks.map((t) => runOne(t.agent, t.task, timeoutMs, ctx.cwd, fallbackModel, signal)));
 				return result(results.map((r) => `## ${r.agent}\n${r.output || r.stderr}`).join("\n\n"), { mode: "parallel", results });
 			}
 
@@ -267,7 +323,7 @@ export default function tincanSquad(pi: ExtensionAPI) {
 				const results = [];
 				for (const step of params.chain) {
 					const task = (step.task ?? params.task ?? "").replaceAll("{task}", params.task ?? "").replaceAll("{previous}", previous);
-					const r = await runOne(step.agent, task, timeoutMs, ctx.cwd, signal);
+					const r = await runOne(step.agent, task, timeoutMs, ctx.cwd, fallbackModel, signal);
 					results.push(r);
 					previous = r.output;
 					if (!r.ok) break;
@@ -282,7 +338,7 @@ export default function tincanSquad(pi: ExtensionAPI) {
 			status.squad.toolCalls++;
 			status.squad.lastMode = "single";
 			status.squad.lastAgents = [params.agent];
-			const r = await runOne(params.agent, params.task, timeoutMs, ctx.cwd, signal);
+			const r = await runOne(params.agent, params.task, timeoutMs, ctx.cwd, fallbackModel, signal);
 			return result(r.output || r.stderr || "No output", { mode: "single", result: r });
 		},
 	});
