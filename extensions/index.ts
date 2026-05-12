@@ -1,8 +1,21 @@
 import { execSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { Type } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
+const HERE = dirname(fileURLToPath(import.meta.url));
+const PACKAGE_ROOT = dirname(HERE);
+const TINCAN_VERSION = (() => {
+	try {
+		const pkg = JSON.parse(readFileSync(join(PACKAGE_ROOT, "package.json"), "utf8")) as { version?: string };
+		return pkg.version ? `v${pkg.version}` : "v0.0.0";
+	} catch {
+		return "v0.0.0";
+	}
+})();
 const MAX_QUESTIONS = 4;
 const MIN_OPTIONS = 2;
 const MAX_OPTIONS = 4;
@@ -187,6 +200,41 @@ function makeBar(pct: number | null, width: number, theme?: any): string {
 	return theme.fg("success", raw);
 }
 
+function colorRtkValue(value: string, score: number, theme?: any): string {
+	if (!theme) return value;
+	if (score >= 60) return theme.fg("success", value);
+	if (score >= 20) return theme.fg("warning", value);
+	if (score > 0) return theme.fg("accent", value);
+	return theme.fg("dim", value);
+}
+
+function colorRtkCount(value: number, theme?: any, options?: { zeroColor?: "dim" | "error" | "warning" | "accent" }) : string {
+	const text = fmtNum(value);
+	if (!theme) return text;
+	if (value > 0) return theme.fg("success", text);
+	return theme.fg(options?.zeroColor || "dim", text);
+}
+
+function renderRtkSummary(status: TincanStatus, rtkSessionSaved: number, rtkSessionCommands: number, theme?: any): string {
+	const longSessionNoRewrites = status.rtk.available && status.turns >= 10 && status.rtk.rewrites === 0;
+	const rewrites = colorRtkCount(status.rtk.rewrites, theme, { zeroColor: longSessionNoRewrites ? "error" : "dim" });
+	const sessionSaved = colorRtkCount(rtkSessionSaved, theme, { zeroColor: longSessionNoRewrites ? "error" : "dim" });
+	const sessionCmds = status.rtk.available ? theme?.fg?.("accent", fmtNum(rtkSessionCommands)) ?? fmtNum(rtkSessionCommands) : fmtNum(rtkSessionCommands);
+	const lifeSaved = colorRtkCount(status.rtk.saved, theme);
+	const lifeCmds = status.rtk.available ? theme?.fg?.("accent", fmtNum(status.rtk.commands)) ?? fmtNum(status.rtk.commands) : fmtNum(status.rtk.commands);
+	const avg = colorRtkValue(`${status.rtk.pct.toFixed(1)}% avg`, status.rtk.pct, theme);
+	return joinFooterParts(
+		[
+			`rewrite:${rewrites}`,
+			`session:${sessionSaved} saved / ${sessionCmds} cmds`,
+			`life:${lifeSaved} / ${lifeCmds}`,
+			avg,
+			longSessionNoRewrites ? theme?.fg?.("error", "no rewrites yet") ?? "no rewrites yet" : "",
+		],
+		theme,
+	);
+}
+
 function getUsageStats(ctx: ExtensionContext) {
 	let input = 0;
 	let output = 0;
@@ -201,14 +249,40 @@ function getUsageStats(ctx: ExtensionContext) {
 	return { input, output, total: input + output, cost };
 }
 
-function fmtTopAgents(byAgent: Record<string, number>): string {
+function footerSep(theme?: any): string {
+	return theme ? theme.fg("dim", " | ") : " | ";
+}
+
+function joinFooterParts(parts: string[], theme?: any): string {
+	return parts.filter(Boolean).join(footerSep(theme));
+}
+
+function fmtTopAgents(byAgent: Record<string, number>, theme?: any): string {
 	const entries = Object.entries(byAgent).sort((a, b) => b[1] - a[1]);
 	const total = entries.reduce((sum, [, count]) => sum + count, 0);
 	return (
 		entries
 			.slice(0, 6)
 			.map(([name, count]) => `${name}:${count}${total > 0 ? ` (${Math.round((count / total) * 100)}%)` : ""}`)
-			.join(" · ") || "none"
+			.join(footerSep(theme)) || "none"
+	);
+}
+
+function resourceLabel(label: string, color: string, theme?: any): string {
+	if (!theme) return label;
+	return theme.fg(color, label);
+}
+
+function renderResources(theme?: any): string {
+	return joinFooterParts(
+		[
+			`${resourceLabel("tool", "accent", theme)}:${theme?.fg?.("success", "ask_user_question") ?? "ask_user_question"}`,
+			`${resourceLabel("tool", "accent", theme)}:${theme?.fg?.("success", "tincan_squad") ?? "tincan_squad"}`,
+			`${resourceLabel("skill", "warning", theme)}:${theme?.fg?.("accent", "tincan") ?? "tincan"}`,
+			`${resourceLabel("prompt", "muted", theme)}:${theme?.fg?.("toolTitle", "tincan") ?? "tincan"}`,
+			`${resourceLabel("footer", "success", theme)}:${theme?.fg?.("success", "active") ?? "active"}`,
+		],
+		theme,
 	);
 }
 
@@ -281,7 +355,7 @@ function renderTincanFooter(width: number, ctx: ExtensionContext, footerData: an
 	const ctxTokens = ctxUsage?.tokens ?? 0;
 	const ctxWindow = ctxUsage?.contextWindow ?? ctxUsage?.maxTokens ?? 0;
 	const ctxPct = ctxWindow > 0 ? Math.round((ctxTokens / ctxWindow) * 100) : null;
-	const topAgents = fmtTopAgents(status.squad.byAgent);
+	const topAgents = fmtTopAgents(status.squad.byAgent, theme);
 	const usage = getUsageStats(ctx);
 	const rtkSessionSaved = Math.max(0, status.rtk.saved - status.rtk.baselineSaved);
 	const rtkSessionCommands = Math.max(0, status.rtk.commands - status.rtk.baselineCommands);
@@ -289,11 +363,11 @@ function renderTincanFooter(width: number, ctx: ExtensionContext, footerData: an
 		...panel(
 			"Session",
 			[
-				["Package", `pi-tincan ${badge("COMM", status.communication, theme)} ${badge("PERSONA", status.persona, theme)} ${badge("SQUAD", status.squad.active, theme)} ${badge("RTK", status.rtk.available, theme)}`],
+				["Package", `pi-tincan ${TINCAN_VERSION} ${badge("COMM", status.communication, theme)} ${badge("PERSONA", status.persona, theme)} ${badge("SQUAD", status.squad.active, theme)} ${badge("RTK", status.rtk.available, theme)}`],
 				["Model", model],
 				["Branch", branch],
 				["CWD", cwd],
-				["Resources", "tools: ask_user_question, tincan_squad · skill: tincan · prompt: tincan · footer: active"],
+				["Resources", renderResources(theme)],
 			],
 			width,
 			theme,
@@ -307,7 +381,7 @@ function renderTincanFooter(width: number, ctx: ExtensionContext, footerData: an
 						? `${fmtNum(ctxTokens)} / ${fmtNum(ctxWindow)} (${fmtPct(ctxPct)})  ${makeBar(ctxPct, Math.min(28, Math.max(10, Math.floor(width * 0.28))), theme)}`
 						: "n/a",
 				],
-				["Tokens", `${fmtNum(usage.input)} in · ${fmtNum(usage.output)} out · ${fmtNum(usage.total)} total · $${usage.cost.toFixed(4)}`],
+				["Tokens", joinFooterParts([`${fmtNum(usage.input)} in`, `${fmtNum(usage.output)} out`, `${fmtNum(usage.total)} total`, `$${usage.cost.toFixed(4)}`], theme)],
 			],
 			width,
 			theme,
@@ -317,19 +391,16 @@ function renderTincanFooter(width: number, ctx: ExtensionContext, footerData: an
 			[
 				[
 					"Runtime",
-					`${badge("COMM", status.communication, theme)} ${badge("PERSONA", status.persona, theme)} ${badge("RTK", status.rtk.available, theme)}  prompt:${status.promptInjects} · turns:${status.turns}`,
+					`${badge("COMM", status.communication, theme)} ${badge("PERSONA", status.persona, theme)} ${badge("RTK", status.rtk.available, theme)}  ${joinFooterParts([`prompt:${status.promptInjects}`, `turns:${status.turns}`], theme)}`,
 				],
-				[
-					"RTK",
-					`rewrite:${status.rtk.rewrites} · session:${fmtNum(rtkSessionSaved)} saved / ${fmtNum(rtkSessionCommands)} cmds · life:${fmtNum(status.rtk.saved)} / ${fmtNum(status.rtk.commands)} · ${status.rtk.pct.toFixed(1)}% avg`,
-				],
+				["RTK", renderRtkSummary(status, rtkSessionSaved, rtkSessionCommands, theme)],
 			],
 			width,
 			theme,
 		),
 		...panel(
 			"Ask User Question",
-			[["Stats", `${badge("ASK", status.ask.calls > 0, theme)} calls:${status.ask.calls} · answers:${status.ask.answers} · cancelled:${status.ask.cancelled} · last:${status.ask.lastQuestions}`]],
+			[["Stats", `${badge("ASK", status.ask.calls > 0, theme)} ${joinFooterParts([`calls:${status.ask.calls}`, `answers:${status.ask.answers}`, `cancelled:${status.ask.cancelled}`, `last:${status.ask.lastQuestions}`], theme)}`]],
 			width,
 			theme,
 		),
@@ -338,7 +409,7 @@ function renderTincanFooter(width: number, ctx: ExtensionContext, footerData: an
 			[
 				[
 					"Runtime",
-					`${badge("SQUAD", status.squad.active, theme)} fires:${status.squad.toolCalls} · runs:${status.squad.agentRuns} · live:${status.squad.running} · mode:${status.squad.lastMode}`,
+					`${badge("SQUAD", status.squad.active, theme)} ${joinFooterParts([`fires:${status.squad.toolCalls}`, `runs:${status.squad.agentRuns}`, `live:${status.squad.running}`, `mode:${status.squad.lastMode}`], theme)}`,
 				],
 				["Last", status.squad.lastAgents.join(", ") || "none"],
 				["Top", topAgents],
