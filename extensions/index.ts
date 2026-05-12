@@ -155,13 +155,22 @@ function fmtTopAgents(byAgent: Record<string, number>): string {
 			.sort((a, b) => b[1] - a[1])
 			.slice(0, 6)
 			.map(([name, count]) => `${name}:${count}`)
-			.join(" | ") || "none"
+			.join(" · ") || "none"
 	);
 }
 
-function bar(label: string, value: string, width: number): string {
-	const body = `│ ${label} ${value}`;
+function panelLine(label: string, value: string, width: number): string {
+	const labelWidth = Math.min(14, Math.max(10, Math.floor(width * 0.22)));
+	const body = `│ ${label.padEnd(labelWidth)} ${clip(value, width - labelWidth - 5)}`;
 	return padRight(body, Math.max(0, width - 1)) + "│";
+}
+
+function panel(title: string, rows: Array<[string, string]>, width: number): string[] {
+	const inner = Math.max(20, width - 2);
+	const top = padRight(`╭─ ${title} ${"─".repeat(Math.max(0, inner - title.length - 3))}╮`, width);
+	const lines = rows.map(([label, value]) => panelLine(label, value, width));
+	const bottom = padRight(`╰${"─".repeat(Math.max(0, inner))}╯`, width);
+	return [top, ...lines, bottom];
 }
 
 function tincanStatus(): TincanStatus {
@@ -186,43 +195,50 @@ function tincanStatus(): TincanStatus {
 
 function renderTincanFooter(width: number, ctx: ExtensionContext, footerData: any): string[] {
 	const status = tincanStatus();
-	const inner = Math.max(28, width - 2);
 	const branch = footerData?.getGitBranch?.() || "no-git";
 	const model = (ctx as any).model?.id || "no-model";
 	const ctxUsage = (ctx as any).getContextUsage?.();
 	const ctxPct = ctxUsage?.contextWindow ? Math.round((ctxUsage.tokens / ctxUsage.contextWindow) * 100) : null;
 	const topAgents = fmtTopAgents(status.squad.byAgent);
-	const modeLine = [
-		`COMM:${status.communication ? "ON" : "OFF"}`,
-		`PERSONA:${status.persona ? "ON" : "OFF"}`,
-		`SQUAD:${status.squad.active ? "ON" : "OFF"}`,
-		`RTK:${status.rtk.available ? "ON" : "OFF"}`,
-		`CTX:${fmtPct(ctxPct)}`,
-	].join("  ");
-	const flowLine = [
-		`TURNS:${status.turns}`,
-		`PROMPT:${status.promptInjects}`,
-		`ASK:${status.ask.calls}`,
-		`ANS:${status.ask.answers}`,
-		`CXL:${status.ask.cancelled}`,
-		`LAST_Q:${status.ask.lastQuestions}`,
-	].join("  ");
-	const squadLine = [
-		`FIRES:${status.squad.toolCalls}`,
-		`RUNS:${status.squad.agentRuns}`,
-		`LIVE:${status.squad.running}`,
-		`MODE:${status.squad.lastMode}`,
-		`LAST:${status.squad.lastAgents.join(",") || "none"}`,
-	].join("  ");
-	const envLine = `MODEL:${model}  BRANCH:${branch}  RTK_RW:${status.rtk.rewrites}`;
 	const lines = [
-		padRight(`╔═ TINCAN ═${"═".repeat(Math.max(0, inner - 11))}╗`, width),
-		bar("▓ MODE  ", clip(modeLine, width - 11), width),
-		bar("▓ FLOW  ", clip(flowLine, width - 11), width),
-		bar("▓ SQUAD ", clip(squadLine, width - 11), width),
-		bar("▓ AGENT ", clip(topAgents, width - 11), width),
-		bar("▓ ENV   ", clip(envLine, width - 11), width),
-		padRight(`╚${"═".repeat(Math.max(0, inner))}╝`, width),
+		...panel(
+			"Tincan Status",
+			[
+				["Communication", status.communication ? "active" : "off"],
+				["Persona", status.persona ? "orchestrator / stable SWE" : "off"],
+				["RTK Rewrite", `${status.rtk.available ? "on" : "off"} · ${status.rtk.rewrites} rewrites`],
+				["Prompt Inject", `${status.promptInjects}`],
+				["Turns", `${status.turns}`],
+				["Context", fmtPct(ctxPct)],
+			],
+			width,
+		),
+		"",
+		...panel(
+			"Ask User Question",
+			[
+				["Calls", `${status.ask.calls}`],
+				["Answers", `${status.ask.answers}`],
+				["Cancelled", `${status.ask.cancelled}`],
+				["Last Questions", `${status.ask.lastQuestions}`],
+			],
+			width,
+		),
+		"",
+		...panel(
+			"Tincan Squad",
+			[
+				["Active", status.squad.active ? "yes" : "no"],
+				["Fires", `${status.squad.toolCalls}`],
+				["Agent Runs", `${status.squad.agentRuns}`],
+				["Running Now", `${status.squad.running}`],
+				["Last Mode", status.squad.lastMode],
+				["Last Agents", status.squad.lastAgents.join(", ") || "none"],
+				["Top Agents", topAgents],
+				["Model / Branch", `${model} · ${branch}`],
+			],
+			width,
+		),
 	];
 	return lines.map((line) => line.slice(0, width));
 }
