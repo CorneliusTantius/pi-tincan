@@ -145,8 +145,33 @@ function clip(text: string, width: number): string {
 	return width <= 0 ? "" : text.length > width ? text.slice(0, width) : text;
 }
 
+function fmtNum(value: number): string {
+	return value.toLocaleString("en-US");
+}
+
 function fmtPct(value: number | null): string {
 	return value === null ? "n/a" : `${value}%`;
+}
+
+function makeBar(pct: number | null, width: number): string {
+	if (pct === null) return "n/a";
+	const safe = Math.max(0, Math.min(100, pct));
+	const filled = Math.round((safe / 100) * width);
+	return "█".repeat(filled) + "░".repeat(Math.max(0, width - filled));
+}
+
+function getUsageStats(ctx: ExtensionContext) {
+	let input = 0;
+	let output = 0;
+	let cost = 0;
+	for (const entry of ((ctx as any).sessionManager?.getBranch?.() || []) as any[]) {
+		if (entry?.type === "message" && entry.message?.role === "assistant") {
+			input += entry.message.usage?.input || 0;
+			output += entry.message.usage?.output || 0;
+			cost += entry.message.usage?.cost?.total || 0;
+		}
+	}
+	return { input, output, total: input + output, cost };
 }
 
 function fmtTopAgents(byAgent: Record<string, number>): string {
@@ -197,19 +222,48 @@ function renderTincanFooter(width: number, ctx: ExtensionContext, footerData: an
 	const status = tincanStatus();
 	const branch = footerData?.getGitBranch?.() || "no-git";
 	const model = (ctx as any).model?.id || "no-model";
+	const cwdRaw = ctx.cwd || process.cwd();
+	const home = process.env.HOME || "";
+	const cwd = home && cwdRaw.startsWith(home) ? `~${cwdRaw.slice(home.length)}` : cwdRaw;
 	const ctxUsage = (ctx as any).getContextUsage?.();
-	const ctxPct = ctxUsage?.contextWindow ? Math.round((ctxUsage.tokens / ctxUsage.contextWindow) * 100) : null;
+	const ctxTokens = ctxUsage?.tokens ?? 0;
+	const ctxWindow = ctxUsage?.contextWindow ?? ctxUsage?.maxTokens ?? 0;
+	const ctxPct = ctxWindow > 0 ? Math.round((ctxTokens / ctxWindow) * 100) : null;
 	const topAgents = fmtTopAgents(status.squad.byAgent);
+	const usage = getUsageStats(ctx);
 	const lines = [
 		...panel(
-			"Tincan Status",
+			"Session",
 			[
-				["Communication", status.communication ? "active" : "off"],
-				["Persona", status.persona ? "orchestrator / stable SWE" : "off"],
+				["Package", "pi-tincan"],
+				["Model", model],
+				["Branch", branch],
+				["CWD", cwd],
+				["Resources", "tools: ask_user_question, tincan_squad · skill: tincan · prompt: tincan · footer: active"],
+			],
+			width,
+		),
+		"",
+		...panel(
+			"Context Window",
+			[
+				["Used", ctxWindow > 0 ? `${fmtNum(ctxTokens)} / ${fmtNum(ctxWindow)} (${fmtPct(ctxPct)})` : "n/a"],
+				["Remaining", ctxWindow > 0 ? fmtNum(Math.max(0, ctxWindow - ctxTokens)) : "n/a"],
+				["Bar", makeBar(ctxPct, Math.min(28, Math.max(10, Math.floor(width * 0.28))))],
+				["Tokens", `${fmtNum(usage.input)} in · ${fmtNum(usage.output)} out · ${fmtNum(usage.total)} total`],
+				["Cost", `$${usage.cost.toFixed(4)}`],
+			],
+			width,
+		),
+		"",
+		...panel(
+			"Activity",
+			[
+				["Communication", status.communication ? "active every turn" : "off"],
+				["Persona", status.persona ? "orchestrator + senior SWE" : "off"],
 				["RTK Rewrite", `${status.rtk.available ? "on" : "off"} · ${status.rtk.rewrites} rewrites`],
 				["Prompt Inject", `${status.promptInjects}`],
 				["Turns", `${status.turns}`],
-				["Context", fmtPct(ctxPct)],
 			],
 			width,
 		),
@@ -235,7 +289,6 @@ function renderTincanFooter(width: number, ctx: ExtensionContext, footerData: an
 				["Last Mode", status.squad.lastMode],
 				["Last Agents", status.squad.lastAgents.join(", ") || "none"],
 				["Top Agents", topAgents],
-				["Model / Branch", `${model} · ${branch}`],
 			],
 			width,
 		),
