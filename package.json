@@ -1,0 +1,46 @@
+{
+  "name": "pi-tincan",
+  "version": "0.1.0",
+  "description": "Barebone ask_user_question extension package for pi coding agent.",
+  "type": "module",
+  "private": true,
+  "keywords": [
+    "pi-package",
+    "pi-extension"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "pack:dry": "npm pack --dry-run"
+  },
+  "pi": {
+    "extensions": [
+      "./extensions/index.ts",
+      "./extensions/tincan-squad/index.ts"
+    ],
+    "skills": [
+      "./skills"
+    ],
+    "prompts": [
+      "./prompts"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-ai": {
+      "optional": true
+    },
+    "@earendil-works/pi-coding-agent": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
