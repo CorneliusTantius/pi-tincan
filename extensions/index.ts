@@ -215,20 +215,26 @@ function colorRtkCount(value: number, theme?: any, options?: { zeroColor?: "dim"
 	return theme.fg(options?.zeroColor || "dim", text);
 }
 
-function renderRtkSummary(status: TincanStatus, rtkSessionSaved: number, rtkSessionCommands: number, theme?: any): string {
+function renderRtkSummary(
+	status: TincanStatus,
+	rtkGlobal: { commands: number; saved: number },
+	rtkSessionSaved: number,
+	rtkSessionCommands: number,
+	theme?: any,
+): string {
 	const longSessionNoRewrites = status.rtk.available && status.turns >= 10 && status.rtk.rewrites === 0;
 	const rewrites = colorRtkCount(status.rtk.rewrites, theme, { zeroColor: longSessionNoRewrites ? "error" : "dim" });
 	const sessionSaved = colorRtkCount(rtkSessionSaved, theme, { zeroColor: longSessionNoRewrites ? "error" : "dim" });
 	const sessionCmds = status.rtk.available ? theme?.fg?.("accent", fmtNum(rtkSessionCommands)) ?? fmtNum(rtkSessionCommands) : fmtNum(rtkSessionCommands);
-	const globalSaved = colorRtkCount(status.rtk.saved, theme);
-	const globalCmds = status.rtk.available ? theme?.fg?.("accent", fmtNum(status.rtk.commands)) ?? fmtNum(status.rtk.commands) : fmtNum(status.rtk.commands);
-	const sessionLabel = theme?.fg?.("accent", "[session]") ?? "[session]";
 	const globalLabel = theme?.fg?.("dim", "[global]") ?? "[global]";
+	const globalText = `${globalLabel} ${fmtNum(rtkGlobal.saved)} saved / ${fmtNum(rtkGlobal.commands)} cmds`;
+	const globalSegment = theme?.fg?.("dim", globalText) ?? globalText;
+	const sessionLabel = theme?.fg?.("accent", "[session]") ?? "[session]";
 	return joinFooterParts(
 		[
 			`rewrite: ${rewrites}`,
 			`${sessionLabel} ${sessionSaved} saved / ${sessionCmds} cmds`,
-			`${globalLabel} ${globalSaved} saved / ${globalCmds} cmds`,
+			globalSegment,
 			longSessionNoRewrites ? theme?.fg?.("error", "no rewrites yet") ?? "no rewrites yet" : "",
 		],
 		theme,
@@ -274,13 +280,13 @@ function resourceLabel(label: string, color: string, theme?: any): string {
 }
 
 function renderResources(theme?: any): string {
+	const entry = (value: string) => (theme ? theme.fg("text", value) : value);
 	return joinFooterParts(
 		[
-			`${resourceLabel("tool", "accent", theme)}: ${theme?.fg?.("success", "ask_user_question") ?? "ask_user_question"}`,
-			`${resourceLabel("tool", "accent", theme)}: ${theme?.fg?.("success", "tincan_squad") ?? "tincan_squad"}`,
-			`${resourceLabel("skill", "warning", theme)}: ${theme?.fg?.("accent", "tincan") ?? "tincan"}`,
-			`${resourceLabel("prompt", "muted", theme)}: ${theme?.fg?.("toolTitle", "tincan") ?? "tincan"}`,
-			`${resourceLabel("footer", "success", theme)}: ${theme?.fg?.("success", "active") ?? "active"}`,
+			`${resourceLabel("tool", "accent", theme)}: ${[entry("ask_user_question"), entry("tincan_squad")].join(", ")}`,
+			`${resourceLabel("skill", "warning", theme)}: ${entry("tincan")}`,
+			`${resourceLabel("prompt", "muted", theme)}: ${entry("tincan")}`,
+			`${resourceLabel("footer", "success", theme)}: ${entry("active")}`,
 		],
 		theme,
 	);
@@ -357,8 +363,9 @@ function renderTincanFooter(width: number, ctx: ExtensionContext, footerData: an
 	const ctxPct = ctxWindow > 0 ? Math.round((ctxTokens / ctxWindow) * 100) : null;
 	const topAgents = fmtTopAgents(status.squad.byAgent, theme);
 	const usage = getUsageStats(ctx);
-	const rtkSessionSaved = Math.max(0, status.rtk.saved - status.rtk.baselineSaved);
-	const rtkSessionCommands = Math.max(0, status.rtk.commands - status.rtk.baselineCommands);
+	const rtkGlobal = status.rtk.available ? fetchRtk() : { commands: status.rtk.commands, saved: status.rtk.saved, pct: status.rtk.pct };
+	const rtkSessionSaved = Math.max(0, rtkGlobal.saved - status.rtk.baselineSaved);
+	const rtkSessionCommands = Math.max(0, rtkGlobal.commands - status.rtk.baselineCommands);
 	const lines = [
 		...panel(
 			"Session",
@@ -393,7 +400,7 @@ function renderTincanFooter(width: number, ctx: ExtensionContext, footerData: an
 					"Runtime",
 					`${badge("COMM", status.communication, theme)} ${badge("PERSONA", status.persona, theme)} ${badge("RTK", status.rtk.available, theme)}  ${joinFooterParts([`prompt: ${status.promptInjects}`, `turns: ${status.turns}`], theme)}`,
 				],
-				["RTK", renderRtkSummary(status, rtkSessionSaved, rtkSessionCommands, theme)],
+				["RTK", renderRtkSummary(status, rtkGlobal, rtkSessionSaved, rtkSessionCommands, theme)],
 			],
 			width,
 			theme,

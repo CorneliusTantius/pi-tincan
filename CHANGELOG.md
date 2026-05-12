@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.0.3
+
+- dim RTK global segment including counts
+- compute RTK global segment directly from fresh `rtk gain` output in footer render
+- keep session/global RTK split clearer in footer
+
 ## v1.0.2
 
 - render `tincan_squad` results with prettier Markdown view in expanded mode
