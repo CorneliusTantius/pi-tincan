@@ -1,3 +1,8 @@
+---
+name: tincan
+description: Tincan package behavior + communication contract. Use when working with pi-tincan ask_user_question, tincan_squad, footer stats, or RTK rewrite behavior.
+---
+
 # pi-tincan
 
 Use this skill when the user wants a tiny example of a bundled pi ask-user-question extension.
