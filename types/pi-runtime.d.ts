@@ -44,6 +44,11 @@ declare module "@earendil-works/pi-coding-agent" {
 		input: unknown;
 	}
 
+	export interface ToolResultEvent {
+		toolName: string;
+		details?: Record<string, unknown>;
+	}
+
 	export interface ExecResult {
 		stdout: string;
 		stderr: string;
@@ -56,6 +61,7 @@ declare module "@earendil-works/pi-coding-agent" {
 		exec(command: string, args?: string[], options?: Record<string, unknown>): Promise<ExecResult>;
 		on(event: "before_agent_start", handler: (event: BeforeAgentStartEvent, ctx: ExtensionContext) => unknown | Promise<unknown>): void;
 		on(event: "tool_call", handler: (event: ToolCallEvent, ctx: ExtensionContext) => unknown | Promise<unknown>): void;
+		on(event: "tool_result", handler: (event: ToolResultEvent, ctx: ExtensionContext) => unknown | Promise<unknown>): void;
 		on(event: "session_start" | "session_shutdown" | "turn_end", handler: (event: unknown, ctx: ExtensionContext) => unknown | Promise<unknown>): void;
 	}
 

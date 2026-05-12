@@ -396,6 +396,28 @@ export default async function piTincan(pi: ExtensionAPI) {
 		});
 	}
 
+	pi.on("tool_call", (event) => {
+		if (event.toolName !== "tincan_squad") return;
+		const input = event.input as {
+			agent?: string;
+			tasks?: Array<{ agent: string }>;
+			chain?: Array<{ agent: string }>;
+		};
+		const agents = input.tasks?.map((t) => t.agent) ?? input.chain?.map((t) => t.agent) ?? (input.agent ? [input.agent] : []);
+		const mode = input.tasks?.length ? "parallel" : input.chain?.length ? "chain" : input.agent ? "single" : "idle";
+		status.squad.toolCalls++;
+		status.squad.lastMode = mode;
+		status.squad.lastAgents = agents;
+		status.squad.agentRuns += agents.length;
+		status.squad.running = agents.length;
+		for (const agent of agents) status.squad.byAgent[agent] = (status.squad.byAgent[agent] || 0) + 1;
+	});
+
+	pi.on("tool_result", (event) => {
+		if (event.toolName !== "tincan_squad") return;
+		status.squad.running = 0;
+	});
+
 	pi.registerTool({
 		name: "ask_user_question",
 		label: "Ask User Question",

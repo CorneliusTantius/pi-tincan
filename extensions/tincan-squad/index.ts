@@ -235,7 +235,6 @@ async function runOne(
 	fallbackModel?: string,
 	signal?: AbortSignal,
 ) {
-	const status = tincanStatus();
 	const agent = AGENTS[agentName];
 	if (!agent) {
 		return {
@@ -251,10 +250,6 @@ async function runOne(
 			fallbackModel,
 		};
 	}
-	status.squad.agentRuns++;
-	status.squad.running++;
-	status.squad.byAgent[agentName] = (status.squad.byAgent[agentName] || 0) + 1;
-
 	const designatedModel = AGENT_MODELS[agentName];
 	const dir = await mkdtemp(join(tmpdir(), "tincan-squad-"));
 	const promptPath = join(dir, `${agentName}.md`);
@@ -274,7 +269,6 @@ async function runOne(
 			primaryError: primary.stderr || primary.output,
 		};
 	} finally {
-		status.squad.running = Math.max(0, status.squad.running - 1);
 		await rm(dir, { recursive: true, force: true });
 	}
 }
@@ -294,7 +288,6 @@ export default function tincanSquad(pi: ExtensionAPI) {
 		],
 		parameters: ParamsSchema,
 		async execute(_id: string, raw: unknown, signal: AbortSignal | undefined, _onUpdate: unknown, ctx: ExtensionContext) {
-			const status = tincanStatus();
 			const params = raw as Params;
 			const action = params.action ?? "run";
 			const timeoutMs = params.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -309,18 +302,12 @@ export default function tincanSquad(pi: ExtensionAPI) {
 			}
 
 			if (params.tasks?.length) {
-				status.squad.toolCalls++;
-				status.squad.lastMode = "parallel";
-				status.squad.lastAgents = params.tasks.map((t) => t.agent);
 				const tasks = params.tasks.slice(0, MAX_PARALLEL);
 				const results = await Promise.all(tasks.map((t) => runOne(t.agent, t.task, timeoutMs, ctx.cwd, fallbackModel, signal)));
 				return result(results.map((r) => `## ${r.agent}\n${r.output || r.stderr}`).join("\n\n"), { mode: "parallel", results });
 			}
 
 			if (params.chain?.length) {
-				status.squad.toolCalls++;
-				status.squad.lastMode = "chain";
-				status.squad.lastAgents = params.chain.map((t) => t.agent);
 				let previous = "";
 				const results = [];
 				for (const step of params.chain) {
@@ -337,9 +324,6 @@ export default function tincanSquad(pi: ExtensionAPI) {
 				return result(`Missing agent/task. Available: ${agentNames.join(", ")}`, { ok: false, agents: agentNames });
 			}
 
-			status.squad.toolCalls++;
-			status.squad.lastMode = "single";
-			status.squad.lastAgents = [params.agent];
 			const r = await runOne(params.agent, params.task, timeoutMs, ctx.cwd, fallbackModel, signal);
 			return result(r.output || r.stderr || "No output", { mode: "single", result: r });
 		},
