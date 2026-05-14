@@ -277,6 +277,10 @@ function badge(text: string, on: boolean, theme?: any): string {
 	return on ? theme.fg("success", `[${text}]`) : theme.fg("error", `[${text}]`);
 }
 
+function staticStatus(text: string, theme?: any): string {
+	return theme ? theme.fg("success", text) : text;
+}
+
 function panelLine(label: string, value: string, width: number, theme?: any): string {
 	const labelWidth = Math.min(16, Math.max(10, Math.floor(width * 0.24)));
 	const body = `│ ${label.padEnd(labelWidth)} ${value}`;
@@ -398,7 +402,7 @@ function renderTincanFooter(width: number, ctx: ExtensionContext, footerData: an
 		...panel(
 			"Session",
 			[
-				["Package", `pi-tincan ${TINCAN_VERSION} ${badge("COMM", status.communication, theme)} ${badge("PERSONA", status.persona, theme)} ${badge("SQUAD", status.squad.active, theme)} ${badge("RTK", status.rtk.available, theme)}`],
+				["Package", `pi-tincan ${TINCAN_VERSION} ${staticStatus("COMM", theme)} ${badge("PERSONA", status.persona, theme)} ${badge("SQUAD", status.squad.active, theme)} ${badge("RTK", status.rtk.available, theme)}`],
 				["Model", model],
 				["Branch", branch],
 				["CWD", cwd],
@@ -426,7 +430,7 @@ function renderTincanFooter(width: number, ctx: ExtensionContext, footerData: an
 			[
 				[
 					"Runtime",
-					`${badge("COMM", status.communication, theme)} ${badge("PERSONA", status.persona, theme)} ${badge("RTK", status.rtk.available, theme)}  ${joinFooterParts([`prompt: ${status.promptInjects}`, `turns: ${status.turns}`], theme)}`,
+					`${staticStatus("COMM", theme)} ${badge("PERSONA", status.persona, theme)} ${badge("RTK", status.rtk.available, theme)}  ${joinFooterParts([`prompt: ${status.promptInjects}`, `turns: ${status.turns}`], theme)}`,
 				],
 				["RTK", renderRtkSummary(status, rtkSessionSaved, rtkSessionCommands, theme)],
 			],

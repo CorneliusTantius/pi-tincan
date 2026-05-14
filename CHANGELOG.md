@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.2.1
+
+- show static COMM footer status as normal green text instead of badge
+
 ## v1.2.0
 
 - cache footer stats and remove external RTK/process work from render path
