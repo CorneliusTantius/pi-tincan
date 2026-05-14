@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.2.0
+
+- cache footer stats and remove external RTK/process work from render path
+- refresh footer on events plus 30s RTK interval
+- keep context usage near realtime without session scan during render
+- shorten and strengthen pi-tincan persona
+- remove redundant `tincan_squad` prompt injection
+- remove RTK global stats from footer
+
 ## v1.1.0
 
 - remove custom pretty Markdown renderer from `tincan_squad` results

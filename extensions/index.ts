@@ -25,47 +25,31 @@ const RESERVED = new Set(["Other", TYPE_SOMETHING, CHAT_ABOUT]);
 
 const TINCAN_PERSONA = `## pi-tincan Persona
 
-Default role: orchestrator + senior software engineer, specialized in building highly stable and scalable apps.
+MUST follow every response, parent agents and subagents.
 
-Core traits:
-- Careful, incremental: prefer small reversible changes over big rewrites.
-- Breaking-change aware: map blast radius before touching code, flag breaks early.
-- Risk-averse: avoid high-risk changes; prefer additive paths over destructive edits.
-- Defensive: use feature flags, shims, and deprecation windows for risky cuts.
-- Verifiable: pair changes with tests or clear validation steps.
-- Orchestrator: delegate parallelizable work when useful, but keep plan ownership.
+Role: senior SWE orchestrator for stable, scalable apps.
+Traits: careful, incremental, breaking-change aware, risk-averse, defensive, verifiable. Prefer small reversible changes. Keep plan ownership.
 
-Always-on communication contract: max meaning/min tokens. Always talk simple. Talk important. Apply every response, every turn.
-- Minimal output.
-- Strip filler, politeness, intros, conclusions.
-- No hedging unless uncertainty is critical.
-- Prefer fragments over full sentences.
-- Omit articles and pronouns unless needed.
+Communication contract: max meaning/min tokens. Talk simple. Talk important. Apply every turn.
+- Minimal output; fragments OK.
+- Strip filler, pleasantries, intros, conclusions, repetition.
+- Skip grammar articles unless needed for clarity.
 - Use symbols when clear: ->, =, !=, +, -, %, ().
-- Prioritize data, actions, results.
-- No repetition or conversational glue.
-- Default format: keywords, bullets, compact tables, code-style lines.
-- Avoid: "Certainly", "I'd be happy to", "Here’s", "You can", "It is important to".
-- If yes/no sufficient -> only yes/no + essential qualifier.
-- If list requested -> only list.
-- If explanation requested -> shortest valid explanation.
-- Use obvious abbreviations.
-- Assume expert reader.
-- No stylistic flourish.
-- Output only requested info.
+- Prioritize facts, actions, results.
+- Default: keywords, bullets, compact tables, code-style lines.
+- Never say: "Certainly", "I'd be happy to", "Here’s", "You can", "It is important to".
+- Yes/no -> only yes/no + essential qualifier.
+- Lists -> only list. Explanations -> shortest valid explanation.
+- Assume expert reader. No flourish. Output only requested info.
 
-Examples:
-Bad: "I'd be happy to help you optimize your workflow. Here are some suggestions."
-Good: "Workflow optimization:\n- automate repetitive tasks\n- batch processing\n- reduce context switching"
-Bad: "The issue is caused because the server is overloaded."
-Good: "Cause = server overload."
-
-Before architecture or refactor work:
-1. State current state and target state.
-2. List breaking changes and affected consumers.
-3. Propose smallest viable step sequence.
+Architecture/refactor work:
+1. State current state + target state.
+2. List breaking changes + affected consumers.
+3. Propose smallest safe steps.
 4. Identify rollback point per step.
-5. Get user confirmation before destructive steps.`;
+5. Get confirmation before destructive steps.
+
+Tincan Squad: use subagents only for complex/specialist/parallel work. No delegation for simple tasks. Subagents obey this persona.`;
 
 type Option = { label: string; description: string; preview?: string };
 type Question = { question: string; header: string; options: Option[]; multiSelect?: boolean };
@@ -102,6 +86,16 @@ type TincanStatus = {
 		byAgent: Record<string, number>;
 		lastMode: "idle" | "single" | "parallel" | "chain";
 		lastAgents: string[];
+	};
+	footer: {
+		input: number;
+		output: number;
+		total: number;
+		cost: number;
+		contextTokens: number;
+		contextWindow: number;
+		contextPct: number | null;
+		rtkLastFetch: number;
 	};
 };
 
@@ -215,28 +209,14 @@ function colorRtkCount(value: number, theme?: any, options?: { zeroColor?: "dim"
 	return theme.fg(options?.zeroColor || "dim", text);
 }
 
-function renderRtkSummary(
-	status: TincanStatus,
-	rtkGlobal: { commands: number; saved: number },
-	rtkSessionSaved: number,
-	rtkSessionCommands: number,
-	theme?: any,
-): string {
+function renderRtkSummary(status: TincanStatus, rtkSessionSaved: number, rtkSessionCommands: number, theme?: any): string {
 	const longSessionNoRewrites = status.rtk.available && status.turns >= 10 && status.rtk.rewrites === 0;
 	const rewrites = colorRtkCount(status.rtk.rewrites, theme, { zeroColor: longSessionNoRewrites ? "error" : "dim" });
 	const sessionSaved = colorRtkCount(rtkSessionSaved, theme, { zeroColor: longSessionNoRewrites ? "error" : "dim" });
 	const sessionCmds = status.rtk.available ? theme?.fg?.("accent", fmtNum(rtkSessionCommands)) ?? fmtNum(rtkSessionCommands) : fmtNum(rtkSessionCommands);
-	const globalLabel = theme?.fg?.("dim", "[global]") ?? "[global]";
-	const globalText = `${globalLabel} ${fmtNum(rtkGlobal.saved)} saved / ${fmtNum(rtkGlobal.commands)} cmds`;
-	const globalSegment = theme?.fg?.("dim", globalText) ?? globalText;
 	const sessionLabel = theme?.fg?.("accent", "[session]") ?? "[session]";
 	return joinFooterParts(
-		[
-			`rewrite: ${rewrites}`,
-			`${sessionLabel} ${sessionSaved} saved / ${sessionCmds} cmds`,
-			globalSegment,
-			longSessionNoRewrites ? theme?.fg?.("error", "no rewrites yet") ?? "no rewrites yet" : "",
-		],
+		[`rewrite: ${rewrites}`, `${sessionLabel} ${sessionSaved} saved / ${sessionCmds} cmds`, longSessionNoRewrites ? theme?.fg?.("error", "no rewrites yet") ?? "no rewrites yet" : ""],
 		theme,
 	);
 }
@@ -349,7 +329,7 @@ function panel(title: string, rows: Array<[string, string]>, width: number, them
 }
 
 function tincanStatus(): TincanStatus {
-	return ((globalThis as any).__piTincan ??= {
+	const state = ((globalThis as any).__piTincan ??= {
 		persona: true,
 		communication: true,
 		turns: 0,
@@ -366,6 +346,37 @@ function tincanStatus(): TincanStatus {
 			lastAgents: [],
 		},
 	}) as TincanStatus;
+	state.rtk.commands ??= 0;
+	state.rtk.saved ??= 0;
+	state.rtk.pct ??= 0;
+	state.rtk.baselineCommands ??= 0;
+	state.rtk.baselineSaved ??= 0;
+	state.footer ??= { input: 0, output: 0, total: 0, cost: 0, contextTokens: 0, contextWindow: 0, contextPct: null, rtkLastFetch: 0 };
+	return state;
+}
+
+function refreshFooterStats(status: TincanStatus, ctx: ExtensionContext, options: { forceRtk?: boolean } = {}) {
+	const ctxUsage = (ctx as any).getContextUsage?.();
+	const contextTokens = ctxUsage?.tokens ?? 0;
+	const contextWindow = ctxUsage?.contextWindow ?? ctxUsage?.maxTokens ?? 0;
+	const contextPct = contextWindow > 0 ? Math.round((contextTokens / contextWindow) * 100) : null;
+	const usage = getUsageStats(ctx);
+	status.footer.input = usage.input;
+	status.footer.output = usage.output;
+	status.footer.total = usage.total;
+	status.footer.cost = usage.cost;
+	status.footer.contextTokens = contextTokens;
+	status.footer.contextWindow = contextWindow;
+	status.footer.contextPct = contextPct;
+
+	const now = Date.now();
+	if (status.rtk.available && (options.forceRtk || now - status.footer.rtkLastFetch >= 30_000)) {
+		const rtk = fetchRtk();
+		status.rtk.commands = rtk.commands;
+		status.rtk.saved = rtk.saved;
+		status.rtk.pct = rtk.pct;
+		status.footer.rtkLastFetch = now;
+	}
 }
 
 function renderTincanFooter(width: number, ctx: ExtensionContext, footerData: any, theme?: any): string[] {
@@ -376,14 +387,13 @@ function renderTincanFooter(width: number, ctx: ExtensionContext, footerData: an
 	const home = process.env.HOME || "";
 	const cwd = home && cwdRaw.startsWith(home) ? `~${cwdRaw.slice(home.length)}` : cwdRaw;
 	const ctxUsage = (ctx as any).getContextUsage?.();
-	const ctxTokens = ctxUsage?.tokens ?? 0;
-	const ctxWindow = ctxUsage?.contextWindow ?? ctxUsage?.maxTokens ?? 0;
-	const ctxPct = ctxWindow > 0 ? Math.round((ctxTokens / ctxWindow) * 100) : null;
+	const ctxTokens = ctxUsage?.tokens ?? status.footer.contextTokens;
+	const ctxWindow = ctxUsage?.contextWindow ?? ctxUsage?.maxTokens ?? status.footer.contextWindow;
+	const ctxPct = ctxWindow > 0 ? Math.round((ctxTokens / ctxWindow) * 100) : status.footer.contextPct;
 	const topAgents = fmtTopAgents(status.squad.byAgent, theme);
-	const usage = getUsageStats(ctx);
-	const rtkGlobal = status.rtk.available ? fetchRtk() : { commands: status.rtk.commands, saved: status.rtk.saved, pct: status.rtk.pct };
-	const rtkSessionSaved = Math.max(0, rtkGlobal.saved - status.rtk.baselineSaved);
-	const rtkSessionCommands = Math.max(0, rtkGlobal.commands - status.rtk.baselineCommands);
+	const usage = status.footer;
+	const rtkSessionSaved = Math.max(0, status.rtk.saved - status.rtk.baselineSaved);
+	const rtkSessionCommands = Math.max(0, status.rtk.commands - status.rtk.baselineCommands);
 	const lines = [
 		...panel(
 			"Session",
@@ -418,7 +428,7 @@ function renderTincanFooter(width: number, ctx: ExtensionContext, footerData: an
 					"Runtime",
 					`${badge("COMM", status.communication, theme)} ${badge("PERSONA", status.persona, theme)} ${badge("RTK", status.rtk.available, theme)}  ${joinFooterParts([`prompt: ${status.promptInjects}`, `turns: ${status.turns}`], theme)}`,
 				],
-				["RTK", renderRtkSummary(status, rtkGlobal, rtkSessionSaved, rtkSessionCommands, theme)],
+				["RTK", renderRtkSummary(status, rtkSessionSaved, rtkSessionCommands, theme)],
 			],
 			width,
 			theme,
@@ -448,6 +458,7 @@ function renderTincanFooter(width: number, ctx: ExtensionContext, footerData: an
 
 export default async function piTincan(pi: ExtensionAPI) {
 	const status = tincanStatus();
+	let refreshFooter: ((options?: { forceRtk?: boolean }) => void) | undefined;
 	let rtkAvailable = false;
 
 	try {
@@ -464,6 +475,7 @@ export default async function piTincan(pi: ExtensionAPI) {
 		status.rtk.pct = rtk.pct;
 		status.rtk.baselineCommands = rtk.commands;
 		status.rtk.baselineSaved = rtk.saved;
+		status.footer.rtkLastFetch = Date.now();
 	}
 
 	if (!rtkAvailable) {
@@ -507,11 +519,13 @@ export default async function piTincan(pi: ExtensionAPI) {
 		status.squad.agentRuns += agents.length;
 		status.squad.running = agents.length;
 		for (const agent of agents) status.squad.byAgent[agent] = (status.squad.byAgent[agent] || 0) + 1;
+		refreshFooter?.({ forceRtk: false });
 	});
 
 	pi.on("tool_result", (event) => {
 		if (event.toolName !== "tincan_squad") return;
 		status.squad.running = 0;
+		refreshFooter?.({ forceRtk: false });
 	});
 
 	pi.registerTool({
@@ -616,20 +630,18 @@ export default async function piTincan(pi: ExtensionAPI) {
 	pi.on("session_start", (_event, ctx) => {
 		if (!ctx.hasUI) return;
 		ctx.ui.setFooter((tui: any, theme: any, footerData: any) => {
-			const unsubscribe = footerData?.onBranchChange?.(() => tui.requestRender?.());
-			const timer = setInterval(() => {
-				if (status.rtk.available) {
-					const rtk = fetchRtk();
-					status.rtk.commands = rtk.commands;
-					status.rtk.saved = rtk.saved;
-					status.rtk.pct = rtk.pct;
-				}
+			refreshFooter = (options = {}) => {
+				refreshFooterStats(status, ctx, options);
 				tui.requestRender?.();
-			}, 1500);
+			};
+			refreshFooter({ forceRtk: false });
+			const unsubscribe = footerData?.onBranchChange?.(() => refreshFooter?.({ forceRtk: false }));
+			const timer = setInterval(() => refreshFooter?.({ forceRtk: true }), 30_000);
 			return {
 				dispose() {
 					unsubscribe?.();
 					clearInterval(timer);
+					refreshFooter = undefined;
 				},
 				invalidate() {},
 				render(width: number) {
@@ -650,5 +662,6 @@ export default async function piTincan(pi: ExtensionAPI) {
 
 	pi.on("turn_end" as any, () => {
 		status.turns++;
+		refreshFooter?.({ forceRtk: false });
 	});
 }

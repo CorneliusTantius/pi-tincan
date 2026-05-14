@@ -41,7 +41,7 @@ const PACKAGE_ROOT = dirname(dirname(HERE));
 const DEFAULT_TIMEOUT_MS = 600_000;
 const MAX_PARALLEL = 4;
 
-const SHARED = `Communication: max meaning/min tokens. Simple + important only.
+const SHARED = `Obey parent pi-tincan persona: max meaning/min tokens, simple + important only, no pleasantries.
 Subagent nesting: allowed only when needed. Prefer direct work. No recursive delegation loops.
 If delegating, use tincan_squad with precise task + expected output.`;
 
@@ -329,7 +329,4 @@ export default function tincanSquad(pi: ExtensionAPI) {
 		},
 	});
 
-	pi.on("before_agent_start", (event) => ({
-		systemPrompt: `${event.systemPrompt}\n\n## Tincan Squad Orchestration\nAuto-delegate complex work with tincan_squad when specialist/parallel context helps. For simple tasks, do not delegate. Available agents: ${agentNames.map((n) => `${n}=${AGENTS[n].description}`).join("; ")}. Subagents may call tincan_squad only if truly needed.`,
-	}));
 }

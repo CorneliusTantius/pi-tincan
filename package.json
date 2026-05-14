@@ -1,6 +1,6 @@
 {
   "name": "pi-tincan",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Barebone ask_user_question extension package for pi coding agent.",
   "type": "module",
   "private": true,
