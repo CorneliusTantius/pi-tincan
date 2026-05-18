@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.2.2
+
+- show installed pi version in footer session panel
+
 ## v1.2.1
 
 - show static COMM footer status as normal green text instead of badge

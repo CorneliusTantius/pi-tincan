@@ -66,6 +66,7 @@ type Answer = {
 type TincanStatus = {
 	persona: boolean;
 	communication: boolean;
+	piVersion: string;
 	turns: number;
 	promptInjects: number;
 	rtk: {
@@ -336,6 +337,7 @@ function tincanStatus(): TincanStatus {
 	const state = ((globalThis as any).__piTincan ??= {
 		persona: true,
 		communication: true,
+		piVersion: "unknown",
 		turns: 0,
 		promptInjects: 0,
 		rtk: { available: false, rewrites: 0, commands: 0, saved: 0, pct: 0, baselineCommands: 0, baselineSaved: 0 },
@@ -350,6 +352,7 @@ function tincanStatus(): TincanStatus {
 			lastAgents: [],
 		},
 	}) as TincanStatus;
+	state.piVersion ??= "unknown";
 	state.rtk.commands ??= 0;
 	state.rtk.saved ??= 0;
 	state.rtk.pct ??= 0;
@@ -403,6 +406,7 @@ function renderTincanFooter(width: number, ctx: ExtensionContext, footerData: an
 			"Session",
 			[
 				["Package", `pi-tincan ${TINCAN_VERSION} ${staticStatus("COMM", theme)} ${badge("PERSONA", status.persona, theme)} ${badge("SQUAD", status.squad.active, theme)} ${badge("RTK", status.rtk.available, theme)}`],
+				["Pi", status.piVersion],
 				["Model", model],
 				["Branch", branch],
 				["CWD", cwd],
@@ -464,6 +468,13 @@ export default async function piTincan(pi: ExtensionAPI) {
 	const status = tincanStatus();
 	let refreshFooter: ((options?: { forceRtk?: boolean }) => void) | undefined;
 	let rtkAvailable = false;
+
+	try {
+		const version = await pi.exec("pi", ["--version"]);
+		status.piVersion = version.stdout.trim() || "unknown";
+	} catch {
+		status.piVersion = "unknown";
+	}
 
 	try {
 		const check = await pi.exec("which", ["rtk"]);
