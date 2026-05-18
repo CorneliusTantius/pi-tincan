@@ -184,6 +184,25 @@ function fetchRtk() {
 	}
 }
 
+function parseVersion(text: string): string | null {
+	return text.match(/\d+\.\d+\.\d+(?:[-+][\w.-]+)?/)?.[0] ?? null;
+}
+
+async function getPiVersion(pi: ExtensionAPI): Promise<string> {
+	try {
+		const result = await pi.exec("pi", ["--version"], { timeout: 1000 });
+		const version = parseVersion(`${result.stdout}\n${result.stderr}`);
+		if (version) return version;
+	} catch {
+		// fallback below
+	}
+	try {
+		return parseVersion(execSync("pi --version 2>&1", { encoding: "utf8", timeout: 1000 })) ?? "unknown";
+	} catch {
+		return "unknown";
+	}
+}
+
 function makeBar(pct: number | null, width: number, theme?: any): string {
 	if (pct === null) return "n/a";
 	const safe = Math.max(0, Math.min(100, pct));
@@ -469,12 +488,7 @@ export default async function piTincan(pi: ExtensionAPI) {
 	let refreshFooter: ((options?: { forceRtk?: boolean }) => void) | undefined;
 	let rtkAvailable = false;
 
-	try {
-		const version = await pi.exec("pi", ["--version"]);
-		status.piVersion = version.stdout.trim() || "unknown";
-	} catch {
-		status.piVersion = "unknown";
-	}
+	status.piVersion = await getPiVersion(pi);
 
 	try {
 		const check = await pi.exec("which", ["rtk"]);
