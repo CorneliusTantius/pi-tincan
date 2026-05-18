@@ -2,6 +2,8 @@
 
 Barebone all-in-one package for [pi](https://pi.dev/).
 
+Requires pi `>=0.75.1`.
+
 Includes:
 - tools: `ask_user_question`, `tincan_squad`
 - always-on persona + communication injection
@@ -59,6 +61,11 @@ Update:
 ```bash
 pi update git:github.com/CorneliusTantius/pi-tincan
 ```
+
+## requirements
+
+- pi `>=0.75.1`
+- Node.js `>=22.19.0`
 
 ## notes
 

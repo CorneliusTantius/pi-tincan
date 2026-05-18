@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.0.0
+
+- require pi >=0.75.1 and Node.js >=22.19.0
+- switch tool schemas to `typebox` import path used by current pi extension API
+- declare current pi runtime peer packages for package compatibility
+
 ## v1.2.2
 
 - show installed pi version in footer session panel
